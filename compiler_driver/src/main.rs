@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::error::Error;
 
 #[derive(Parser)]
 struct Cli {
@@ -14,7 +15,7 @@ struct Cli {
     file_path: std::path::PathBuf,
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let arg = Cli::parse();
 
     if arg.lex == true {
@@ -26,4 +27,6 @@ fn main() {
     } else {
         println!("going through the entire pip line");
     }
+
+    Ok(())
 }
