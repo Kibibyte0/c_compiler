@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::error::Error;
+use std::{error::Error, fs};
 
 #[derive(Parser)]
 struct Cli {
@@ -19,7 +19,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let arg = Cli::parse();
 
     if arg.lex == true {
-        println!("using the lexer");
+        let input_string = fs::read_to_string(&arg.file_path)?;
+
+        let mut lexer = lexer::Lexer::new(&input_string);
+        while let Some(tok) = lexer.next() {
+            println!(
+                "mathced string: {}, token Type :{:?}, line: {}, column: {}",
+                tok.lexeme, tok.token, tok.line, tok.column
+            );
+        }
     } else if arg.parse == true {
         println!("using the parser");
     } else if arg.codegen == true {
