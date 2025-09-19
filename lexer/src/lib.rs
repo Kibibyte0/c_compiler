@@ -47,6 +47,11 @@ pub enum Token {
     Error,
 }
 
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
 pub struct Lexer<'source> {
     iter: logos::Lexer<'source, Token>,
     input: &'source str,
@@ -56,10 +61,10 @@ pub struct Lexer<'source> {
 }
 
 pub struct SpannedToken<'a> {
-    pub token: Token,
+    pub token_type: Token,
     pub lexeme: &'a str,
-    pub line: usize,
-    pub column: usize,
+    pub line_num: usize,
+    pub span: Span,
 }
 
 impl<'source> Lexer<'source> {
@@ -68,7 +73,7 @@ impl<'source> Lexer<'source> {
         Self {
             iter: Token::lexer(input),
             input,
-            line: 0,
+            line: 1,
             column: 0,
             position: 0,
         }
@@ -76,13 +81,13 @@ impl<'source> Lexer<'source> {
 
     pub fn next(&mut self) -> Option<SpannedToken<'source>> {
         // return None when the iter is empty
-        let token = match self.iter.next()? {
+        let token_type = match self.iter.next()? {
             Ok(mat) => mat,
             Err(_) => panic!("invalid token: {}", self.iter.slice()),
         };
 
         // catch invalid tokens
-        if let Token::Invalid = token {
+        if let Token::Invalid = token_type {
             panic!("Inavlid Identifier {}", self.iter.slice());
         }
 
@@ -93,14 +98,19 @@ impl<'source> Lexer<'source> {
         // update the current position
         self.position = self.iter.span().end;
 
-        let token_column = self.column;
+        // set the start of the token and end of the token relative to the line 
+        let token_column_start = self.column;
         self.column += self.position - start;
+        let token_column_end = self.column;
 
         let spanned_token = SpannedToken {
-            token,
+            token_type,
             lexeme: self.iter.slice(),
-            line: self.line,
-            column: token_column,
+            line_num: self.line,
+            span: Span {
+                start: token_column_start,
+                end: token_column_end
+            },
         };
 
         Some(spanned_token)
@@ -116,5 +126,18 @@ impl<'source> Lexer<'source> {
                 self.column += 1;
             }
         }
+    }
+
+    // getters for priveate fields
+    pub fn get_source_code(&self) -> &'source str {
+        self.input
+    }
+
+    pub fn get_line_num(&self) -> usize {
+        self.line
+    }
+
+    pub fn get_col_num(&self) -> usize {
+        self.column
     }
 }
