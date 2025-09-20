@@ -22,7 +22,7 @@ impl ParseErr {
 
         if let Some(line) = source_code.lines().nth(self.line_num - 1) {
             eprintln!("{}", line);
-            eprintln!("{:>width$}^", "", width = self.col_num);
+            eprintln!("{:>width$}^", "", width = self.col_num + 1);
             panic!();
         }
     }

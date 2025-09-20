@@ -25,13 +25,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         while let Some(tok) = lexer.next() {
             println!(
                 "mathced string: {}, token Type :{:?}, line: {}, column: {}",
-                tok.lexeme, tok.token_type, tok.line_num, tok.span.end
+                tok.lexeme, tok.token_type, tok.span.line_num, tok.span.col_start
             );
         }
     } else if arg.parse == true {
         let input_string = fs::read_to_string(&arg.file_path)?;
         let lexer = lexer::Lexer::new(&input_string);
-        let _program = parser::parse_program(lexer);
+        let mut parser = parser::Parser::new(lexer);
+        parser.parse_program().dump(0);
     } else if arg.codegen == true {
         println!("using the code generator");
     } else {

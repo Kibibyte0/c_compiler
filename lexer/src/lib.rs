@@ -47,10 +47,6 @@ pub enum Token {
     Error,
 }
 
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
 
 pub struct Lexer<'source> {
     iter: logos::Lexer<'source, Token>,
@@ -60,11 +56,26 @@ pub struct Lexer<'source> {
     position: usize,
 }
 
-pub struct SpannedToken<'a> {
-    pub token_type: Token,
-    pub lexeme: &'a str,
+pub struct Span {
     pub line_num: usize,
+    pub col_start: usize,
+    pub col_end: usize,
+}
+
+pub struct SpannedToken<'source> {
+    pub token_type: Token,
+    pub lexeme: &'source str,
     pub span: Span,
+}
+
+impl<'source> Default for SpannedToken<'source> {
+    fn default() -> Self {
+        Self {
+            token_type: Token::Invalid,
+            lexeme: "exmpty",
+            span: Span { line_num: 0, col_start: 0, col_end: 0 }
+        }
+    }
 }
 
 impl<'source> Lexer<'source> {
@@ -106,10 +117,10 @@ impl<'source> Lexer<'source> {
         let spanned_token = SpannedToken {
             token_type,
             lexeme: self.iter.slice(),
-            line_num: self.line,
             span: Span {
-                start: token_column_start,
-                end: token_column_end
+                line_num: self.line,
+                col_start: token_column_start,
+                col_end: token_column_end
             },
         };
 
