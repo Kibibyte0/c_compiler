@@ -1,4 +1,5 @@
 use clap::Parser;
+use codegen::Codegen;
 use std::{error::Error, fs};
 
 #[derive(Parser)]
@@ -34,7 +35,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut parser = parser::Parser::new(lexer);
         parser.parse_program().dump(0);
     } else if arg.codegen == true {
-        println!("using the code generator");
+        let input_string = fs::read_to_string(&arg.file_path)?;
+        let lexer = lexer::Lexer::new(&input_string);
+        let mut parser = parser::Parser::new(lexer);
+        let codegen = Codegen::new(parser.parse_program());
+        codegen.gen_program().dump(0);
     } else {
         println!("going through the entire pip line");
     }

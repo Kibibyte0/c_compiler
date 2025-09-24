@@ -2,6 +2,6 @@
 
 resolver = "3"
 
-members = [
+members = ["codegen",
     "compiler_driver", "lexer", "parser"
 ]

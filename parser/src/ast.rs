@@ -1,29 +1,25 @@
-// Identifier is just a wrapper for a string (function name)
-pub struct Identifier(pub String);
+pub struct Identifier<'source>(pub &'source str);
 
-// The whole program, holds one function definition
-pub struct Program {
-    pub function: FunctionDefinition,
+pub struct Program<'source> {
+    pub function: FunctionDefinition<'source>,
 }
 
-// A function definition: name + body
-pub struct FunctionDefinition {
-    pub name: Identifier,
+pub struct FunctionDefinition<'source> {
+    pub name: Identifier<'source>,
     pub body: Statement,
 }
 
-// Statements in the language
 pub enum Statement {
     Return(Expression),
 }
 
-// Expressions in the language
 pub enum Expression {
     Constant(i32),
 }
 
+
 // implement pretty printing for the AST
-impl Program {
+impl<'source> Program<'source> {
     pub fn dump(&self, indent: usize) {
         let pad = " ".repeat(indent);
         println!("{pad}Program(");
@@ -32,7 +28,7 @@ impl Program {
     }
 }
 
-impl FunctionDefinition {
+impl<'source> FunctionDefinition<'source> {
     pub fn dump(&self, indent: usize) {
         let pad = " ".repeat(indent);
         println!("{pad}Function(");

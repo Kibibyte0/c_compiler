@@ -4,7 +4,7 @@ use std::mem;
 
 mod parse_err;
 
-mod ast;
+pub mod ast;
 
 pub struct Parser<'source> {
     lexer: Lexer<'source>,
@@ -23,9 +23,7 @@ impl<'source> Parser<'source> {
 
     // advance the parser one token, return none if the there is no tokens left
     fn advance(&mut self) -> Option<&SpannedToken<'source>> {
-        self.previous_token = mem::replace(
-            &mut self.current_token, SpannedToken::default()
-        );
+        self.previous_token = mem::take(&mut self.current_token);
         self.current_token = self.lexer.next()?;
         Some(&self.current_token)
     }
@@ -62,13 +60,26 @@ impl<'source> Parser<'source> {
     }
 
     // entry point for the parser 
-    pub fn parse_program(&mut self) -> Program {
-        Program {
+    pub fn parse_program(&mut self) -> Program<'source> {
+        let program = Program {
             function: self.parse_function(),
+        };
+
+        match self.advance() {
+            Some(_) => {
+                let message = format!("unexpexted token at the end of the input stream");
+                let err = parse_err::ParseErr::new(message,
+                    self.current_token.span.line_num,
+                    self.current_token.span.col_start
+                );
+                err.report(self.lexer.get_source_code());
+                unreachable!();
+            }
+            None => program,
         }
     }
 
-    fn parse_function(&mut self) -> FunctionDefinition {
+    fn parse_function(&mut self) -> FunctionDefinition<'source> {
         self.assert_token("int");
 
         let name = self.parse_identifier(); 
@@ -89,11 +100,11 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_identifier(&mut self) -> Identifier  {
+    fn parse_identifier(&mut self) -> Identifier<'source>  {
         let token = self.get_next_token();
 
         if token.token_type == Token::Identifier {
-            Identifier(token.lexeme.to_string())
+            Identifier(token.lexeme)
         } else {
             let message = String::from("expected an identifier");
             let err = parse_err::ParseErr::new(

@@ -43,9 +43,9 @@ pub enum Token {
     // skipped patterns
     #[regex(r"[ \t\n\f]+", logos::skip)]
     #[regex(r"//[^\n]*", logos::skip)]
-    #[regex(r"/\*([^*]|\*+[^*/])*\*+/", logos::skip)]
+    #[regex(r"/\*[^*]*\*+([^/*][^*]*\*+)*/", logos::skip)]
     Error,
-}
+} 
 
 
 pub struct Lexer<'source> {
