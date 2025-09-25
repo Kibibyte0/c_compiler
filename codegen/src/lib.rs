@@ -2,7 +2,7 @@ use parser::ast::{Expression, FunctionDefinition, Program, Statement};
 
 use crate::asm_ast::{AsmFunctionDefinition, AsmProgram, Instruction, Operand};
 
-mod asm_ast;
+pub mod asm_ast;
 pub struct Codegen<'source> {
     program: Program<'source>,
 }

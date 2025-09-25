@@ -3,5 +3,5 @@
 resolver = "3"
 
 members = ["codegen",
-    "compiler_driver", "lexer", "parser"
+    "compiler_driver", "emitter", "lexer", "parser"
 ]
