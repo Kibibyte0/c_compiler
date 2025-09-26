@@ -1,29 +1,27 @@
+use std::fmt;
+use std::error::Error;
 
+#[derive(Debug)]
 pub struct ParseErr {
-    message: String,
-    line_num: usize,
-    col_num: usize,
+    pub message: String,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl ParseErr {
-    pub fn new(message: String, line_num: usize, col_num: usize) -> ParseErr {
-        ParseErr {
-            message,
-            line_num,
-            col_num,
-        }
-    }
-
-    pub fn report(&self, source_code: &str) {
-        eprintln!(
-            "error: {}, line: {}, column {}",
-            self.message, self.line_num, self.col_num
-        );
-
-        if let Some(line) = source_code.lines().nth(self.line_num - 1) {
-            eprintln!("{}", line);
-            eprintln!("{:>width$}^", "", width = self.col_num + 1);
-            panic!();
-        }
+    pub fn new(message: String, line: usize, column: usize) -> Self {
+        ParseErr { message, line, column }
     }
 }
+
+impl fmt::Display for ParseErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Parse error at line {}, column {}: {}",
+            self.line, self.column, self.message
+        )
+    }
+}
+
+impl Error for ParseErr {}
