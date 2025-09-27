@@ -1,0 +1,81 @@
+use logos::Logos;
+
+// Extras for logos to keep track of line number
+#[derive(Debug, Default)]
+pub struct LinePosition {
+    pub line_num: usize,
+}
+
+// callback function to be used whenever logos match a new line char
+// always return None to skip the newline
+fn update_line_num(lex: &mut logos::Lexer<Token>) {
+    lex.extras.line_num += 1;
+}
+
+#[derive(Debug, PartialEq, Logos)]
+#[logos(extras = LinePosition)]
+pub enum Token {
+    // Identifiers: starts with a letter or underscore, followed by letters, digits, or underscores
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", priority = 0)]
+    Identifier,
+
+    // Integer constants (decimal only)
+    #[regex(r"\d+")]
+    ConstantInt,
+
+    // Keywords
+    #[token("return")]
+    Return,
+
+    #[token("int")]
+    Int,
+
+    #[token("void")]
+    Void,
+
+    // unary operators
+    #[token("~")]
+    BitwiseComplement,
+
+    #[token("-")]
+    Negation,
+
+    #[token("--")]
+    Decrement,
+
+    // Symbols
+    #[token("(")]
+    LeftParenthesis,
+
+    #[token(")")]
+    RightParenthesis,
+
+    #[token("{")]
+    LeftCurlyBracket,
+
+    #[token("}")]
+    RightCurlyBracket,
+
+    #[token(";")]
+    Semicolon,
+
+    // skipped patterns
+    #[regex(r"\n", callback = update_line_num)]
+    #[regex(r"[ \t\f]+")]
+    #[regex(r"//[^\n]*")]
+    #[regex(r"/\*[^*]*\*+([^/*][^*]*\*+)*/")]
+    Skip,
+
+    // invalid patterns
+    #[regex(r"\d+[a-zA-Z_][a-zA-Z0-9_]*")]
+    Error,
+}
+
+impl Token {
+    pub fn is_unary(&self) -> bool {
+        match *self {
+            Token::Negation | Token::BitwiseComplement => true,
+            _ => false,
+        }
+    }
+}
