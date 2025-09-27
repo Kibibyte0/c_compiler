@@ -9,3 +9,4 @@ lexer = { path = "../lexer" }
 parser = { path = "../parser" }
 codegen = { path = "../codegen" }
 emitter = { path = "../emitter" }
+ir_gen = { path = "../ir_gen" }

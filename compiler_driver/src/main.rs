@@ -1,8 +1,6 @@
 use clap::Parser;
-use codegen::Codegen;
-use emitter::Emitter;
-use std::{error::Error, fs};
 use std::path::PathBuf;
+use std::{error::Error, fs};
 
 #[derive(Parser)]
 struct Cli {
@@ -18,7 +16,7 @@ struct Cli {
     file_path: PathBuf,
 }
 
-fn replace_last_component(mut path: PathBuf, new: &str) -> PathBuf {
+fn _replace_last_component(mut path: PathBuf, new: &str) -> PathBuf {
     path.set_file_name(new);
     path
 }
@@ -33,32 +31,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         while let Some(tok) = lexer.next() {
             println!(
                 "mathced string: {}, token Type :{:?}, line: {}, column: {}",
-                tok.lexeme, tok.token_type, tok.span.line_num, tok.span.col_start
+                tok.lexeme, tok.token_type, tok.line_num, tok.col_start
             );
         }
     } else if arg.parse == true {
         let input_string = fs::read_to_string(&arg.file_path)?;
         let lexer = lexer::Lexer::new(&input_string);
-        let mut parser = parser::Parser::new(lexer);
-        parser.parse_program().dump(0);
+        let mut parser = parser::Parser::build(lexer)?;
+        let program = parser.parse_program()?;
+
+        let tacky = ir_gen::IRgen::new(program).emit_tacky();
+        tacky.print();
 
     } else if arg.codegen == true {
-        let input_string = fs::read_to_string(&arg.file_path)?;
-        let lexer = lexer::Lexer::new(&input_string);
-        let mut parser = parser::Parser::new(lexer);
-        let codegen = Codegen::new(parser.parse_program());
-        codegen.gen_program().dump(0);
-
     } else {
-        let input_string = fs::read_to_string(&arg.file_path)?;
-        let lexer = lexer::Lexer::new(&input_string);
-        let mut parser = parser::Parser::new(lexer);
-        let codegen = Codegen::new(parser.parse_program());
-
-        let output_path = replace_last_component(arg.file_path, "out.s");
-        let mut emitter = Emitter::new(codegen.gen_program(), output_path);
-        emitter.emit_asm();
-
     }
 
     Ok(())

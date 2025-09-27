@@ -1,5 +1,6 @@
-use std::fmt;
+use lexer::SpannedToken;
 use std::error::Error;
+use std::fmt;
 
 #[derive(Debug)]
 pub struct ParseErr {
@@ -10,7 +11,23 @@ pub struct ParseErr {
 
 impl ParseErr {
     pub fn new(message: String, line: usize, column: usize) -> Self {
-        ParseErr { message, line, column }
+        ParseErr {
+            message,
+            line,
+            column,
+        }
+    }
+
+    pub fn expected(expected: impl ToString, found: &SpannedToken) -> Self {
+        ParseErr::new(
+            format!(
+                "expected {}, found '{}'",
+                expected.to_string(),
+                found.lexeme
+            ),
+            found.line_num,
+            found.col_start,
+        )
     }
 }
 
