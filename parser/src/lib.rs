@@ -1,6 +1,8 @@
 use lexer::{Lexer, SpannedToken, token::Token};
 use parse_err::ParseErr;
 
+use crate::ast::Identifier;
+
 mod expressions;
 mod parse_err;
 
@@ -112,11 +114,11 @@ impl<'source> Parser<'source> {
         Ok(ast::FunctionDef::new(name, body))
     }
 
-    fn parse_identifier(&mut self) -> Result<&'source str, ParseErr> {
+    fn parse_identifier(&mut self) -> Result<Identifier<'source>, ParseErr> {
         let token = self.advance()?;
 
         if token.token_type == Token::Identifier {
-            Ok(token.lexeme)
+            Ok(ast::Identifier(token.lexeme))
         } else {
             Err(ParseErr::expected("identifier", &token))
         }

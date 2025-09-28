@@ -14,7 +14,7 @@ impl fmt::Display for UnaryOP {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UnaryOP::BitwiseComplement => write!(f, "BitwiseComplement"),
-            UnaryOP::Negation => write!(f, "Negation")
+            UnaryOP::Negation => write!(f, "Negation"),
         }
     }
 }
@@ -23,7 +23,6 @@ pub enum Value {
     Constant(i32),
     Var(String),
 }
-
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -39,9 +38,11 @@ pub struct Program<'source> {
 }
 
 pub struct FunctionDef<'source> {
-    name: &'source str,
+    name: Identifier<'source>,
     instructions: Vec<Instruction>,
 }
+
+pub struct Identifier<'source>(pub &'source str);
 
 impl<'source> Program<'source> {
     pub fn new(function: FunctionDef<'source>) -> Self {
@@ -59,13 +60,13 @@ impl<'source> Program<'source> {
 }
 
 impl<'source> FunctionDef<'source> {
-    pub fn new(name: &'source str, instructions: Vec<Instruction>) -> Self {
+    pub fn new(name: Identifier<'source>, instructions: Vec<Instruction>) -> Self {
         Self { name, instructions }
     }
 
     fn print_with_indent(&self, indent: usize) {
         println!("{}FunctionDef", " ".repeat(indent));
-        println!("{}name: {}", " ".repeat(indent + 2), self.name);
+        println!("{}name: {}", " ".repeat(indent + 2), self.name.0);
         self.print_instructions(indent + 2);
     }
 
@@ -77,7 +78,13 @@ impl<'source> FunctionDef<'source> {
                     println!("{}Ret({})", " ".repeat(indent + 2), val);
                 }
                 Instruction::Unary { op, dst, src } => {
-                    println!("{}{}(dst: {}, src: {})", " ".repeat(indent + 2), op, dst, src);
+                    println!(
+                        "{}{}(dst: {}, src: {})",
+                        " ".repeat(indent + 2),
+                        op,
+                        dst,
+                        src
+                    );
                 }
             }
         }

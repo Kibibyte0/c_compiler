@@ -3,7 +3,7 @@ pub struct Program<'source> {
 }
 
 pub struct FunctionDef<'source> {
-    name: &'source str,
+    name: Identifier<'source>,
     body: Statement,
 }
 
@@ -22,6 +22,8 @@ pub enum UnaryOP {
     BitwiseComplement,
 }
 
+pub struct Identifier<'source>(pub &'source str);
+
 //
 // Program impl
 //
@@ -31,8 +33,8 @@ impl<'source> Program<'source> {
         Self { function }
     }
 
-    pub fn get_function(&self) -> &FunctionDef<'source> {
-        &self.function
+    pub fn into_parts(self) -> FunctionDef<'source> {
+        self.function
     }
 
     pub fn print(&self) {
@@ -49,22 +51,27 @@ impl<'source> Program<'source> {
 // Function impl
 //
 
+impl<'source> Default for FunctionDef<'source> {
+    fn default() -> Self {
+        Self {
+            name: Identifier("func"),
+            body: Statement::Return(Expression::Constant(1)),
+        }
+    }
+}
+
 impl<'source> FunctionDef<'source> {
-    pub fn new(name: &'source str, body: Statement) -> Self {
+    pub fn new(name: Identifier<'source>, body: Statement) -> Self {
         Self { name, body }
     }
 
-    pub fn get_name(&self) -> &'source str {
-        self.name
-    }
-
-    pub fn get_body(&self) -> &Statement {
-        &self.body
+    pub fn into_parts(self) -> (Identifier<'source>, Statement) {
+        (self.name, self.body)
     }
 
     fn print_with_indent(&self, indent: usize) {
         println!("{0:1$}FunctionDef", "", indent);
-        println!("{0:1$}name: {2}", "", indent + 2, self.name);
+        println!("{0:1$}name: {2}", "", indent + 2, self.name.0);
         self.body.print_with_indent(indent + 2);
     }
 }

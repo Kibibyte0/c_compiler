@@ -1,49 +1,44 @@
-use std::cell::RefCell;
-
 mod tacky;
 use parser::ast;
 
-thread_local! {
-    static TEMP_VAR_COUNTER: RefCell<usize> = RefCell::new(0);
+pub struct IRgen {
+    var_count: usize, // counter to generate automatic variables
 }
 
-pub struct IRgen<'source> {
-    program: ast::Program<'source>,
-}
-
-impl<'source> IRgen<'source> {
-    pub fn new(program: ast::Program<'source>) -> Self {
-        Self { program }
+impl IRgen {
+    pub fn new() -> Self {
+        Self { var_count: 0 }
     }
 
     // generate temporary variables
-    fn make_temp_var() -> String {
-        TEMP_VAR_COUNTER.with(|counter| {
-            let id = *counter.borrow();
-            *counter.borrow_mut() += 1;
-            format!("tmp.{}", id)
-        })
+    fn make_temp_var(&mut self) -> String {
+        let s = format!("tmp.{}", self.var_count);
+        self.var_count += 1;
+        s
     }
 
-    pub fn emit_tacky(&self) -> tacky::Program<'source> {
-        let function = self.program.get_function();
+    pub fn emit_tacky<'source>(
+        &mut self,
+        program: ast::Program<'source>,
+    ) -> tacky::Program<'source> {
+        let function = program.into_parts();
         tacky::Program::new(self.emit_function_def(function))
     }
 
-    fn emit_function_def(
-        &self,
-        function: &ast::FunctionDef<'source>,
+    fn emit_function_def<'source> (
+        &mut self,
+        function: ast::FunctionDef<'source>,
     ) -> tacky::FunctionDef<'source> {
-        let name = function.get_name();
+        let (name, body) = function.into_parts();
         let mut instructions: Vec<tacky::Instruction> = Vec::new();
-        self.emit_statements(function.get_body(), &mut instructions);
+        self.emit_statements(body, &mut instructions);
 
-        tacky::FunctionDef::new(name, instructions)
+        tacky::FunctionDef::new(tacky::Identifier(name.0), instructions)
     }
 
     fn emit_statements(
-        &self,
-        statement: &ast::Statement,
+        &mut self,
+        statement: ast::Statement,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
         match statement {
@@ -55,27 +50,29 @@ impl<'source> IRgen<'source> {
     }
 
     fn emit_expression(
-        &self,
-        exp: &ast::Expression,
-        instructions: &mut Vec<tacky::Instruction>
+        &mut self,
+        exp: ast::Expression,
+        instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         match exp {
-            ast::Expression::Constant(int) => {
-                tacky::Value::Constant(*int)
-            }
+            ast::Expression::Constant(int) => tacky::Value::Constant(int),
 
             ast::Expression::Unary(op, inner) => {
-                let src = self.emit_expression(inner, instructions);
-                let dst_name = IRgen::make_temp_var();
+                let src = self.emit_expression(*inner, instructions);
+                let dst_name = self.make_temp_var();
                 let dst = tacky::Value::Var(dst_name.clone());
-                let tacky_op = self.convert_unary_op(op);
-                instructions.push(tacky::Instruction::Unary { op: tacky_op, dst, src });
+                let tacky_op = IRgen::convert_unary_op(op);
+                instructions.push(tacky::Instruction::Unary {
+                    op: tacky_op,
+                    dst,
+                    src,
+                });
                 tacky::Value::Var(dst_name)
             }
         }
     }
 
-    fn convert_unary_op(&self, op: &ast::UnaryOP) -> tacky::UnaryOP {
+    fn convert_unary_op(op: ast::UnaryOP) -> tacky::UnaryOP {
         match op {
             ast::UnaryOP::BitwiseComplement => tacky::UnaryOP::BitwiseComplement,
             ast::UnaryOP::Negation => tacky::UnaryOP::Negation,
