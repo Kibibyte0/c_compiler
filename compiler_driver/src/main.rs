@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let lexer = lexer::Lexer::new(&input_string);
             let mut parser = parser::Parser::build(lexer)?;
             let program = parser.parse_program()?;
-            ir_gen::IRgen::new(program).emit_tacky().print();
+            ir_gen::IRgen::new().emit_tacky(program).print();
         }
 
         Stage::Codegen => {}
