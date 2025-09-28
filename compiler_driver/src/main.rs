@@ -43,7 +43,23 @@ impl Cli {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("error: {}", e);
+
+        // shows lower causes of error
+        // put of potential error hierarchy in the future
+        let mut source = e.source();
+        while let Some(s) = source {
+            eprintln!("  caused by: {}", s);
+            source = s.source();
+        }
+
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
     let arg = Cli::parse();
 
     match arg.selected_stage() {
@@ -52,7 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut lexer = lexer::Lexer::new(&input_string);
             while let Some(tok) = lexer.next() {
                 println!(
-                    "mathced string: {}, token Type :{:?}, line: {}, column: {}",
+                    "matched string: {}, token type: {:?}, line: {}, column: {}",
                     tok.lexeme, tok.token_type, tok.line_num, tok.col_start
                 );
             }
@@ -63,7 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let lexer = lexer::Lexer::new(&input_string);
             let mut parser = parser::Parser::build(lexer)?;
             let program = parser.parse_program()?;
-            program.print();            
+            program.print();
         }
 
         Stage::Tacky => {
@@ -74,9 +90,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             ir_gen::IRgen::new().emit_tacky(program).print();
         }
 
-        Stage::Codegen => {}
+        Stage::Codegen => {
+            // TODO: Implement code generation stage
+        }
 
-        Stage::None => {}
+        Stage::None => {
+            // TODO: Chain the whole compilation pipeline
+        }
     }
 
     Ok(())
