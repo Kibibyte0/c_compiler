@@ -18,7 +18,7 @@ impl ParseErr {
         }
     }
 
-    pub fn expected(expected: impl ToString, found: &SpannedToken) -> Self {
+    pub fn expected_found(expected: impl ToString, found: &SpannedToken) -> Self {
         ParseErr::new(
             format!(
                 "expected {}, found '{}'",
@@ -28,6 +28,10 @@ impl ParseErr {
             found.line_num,
             found.col_start,
         )
+    }
+
+    pub fn expected(expected: impl ToString, line: usize, column: usize) -> Self {
+        ParseErr::new(format!("expected {}", expected.to_string(),), line, column)
     }
 }
 

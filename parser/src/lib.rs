@@ -10,6 +10,7 @@ pub mod ast;
 
 pub struct Parser<'source> {
     lexer: Lexer<'source>,
+    current_token: Option<SpannedToken<'source>>,
     peeked_token: Option<SpannedToken<'source>>,
 }
 
@@ -22,6 +23,7 @@ impl<'source> Parser<'source> {
 
         Ok(Self {
             lexer,
+            current_token: None,
             peeked_token: Some(peeked_token),
         })
     }
@@ -31,12 +33,12 @@ impl<'source> Parser<'source> {
         ParseErr::new(
             "unexpected end of input".to_string(),
             self.lexer.get_line_num(),
-            self.lexer.get_span().end,
+            self.lexer.get_col_num(),
         )
     }
 
     // advance the parser to the next token and return the current peeked token,
-    fn advance(&mut self) -> Result<SpannedToken<'source>, ParseErr> {
+    fn advance(&mut self) -> Result<&SpannedToken<'source>, ParseErr> {
         let token = self
             .peeked_token
             .take()
@@ -50,13 +52,21 @@ impl<'source> Parser<'source> {
             ));
         }
 
+        self.current_token = Some(token);
         self.peeked_token = self.lexer.next();
-        Ok(token)
+        Ok(self.current()?)
     }
 
     // return the peeked token, return end of input stream error if there is no token
     fn peek(&self) -> Result<&SpannedToken<'source>, ParseErr> {
         self.peeked_token
+            .as_ref()
+            .ok_or_else(|| self.unexpected_eof())
+    }
+
+    // return the current token, return end of input stream error if there is no token
+    fn current(&self) -> Result<&SpannedToken<'source>, ParseErr> {
+        self.current_token
             .as_ref()
             .ok_or_else(|| self.unexpected_eof())
     }
@@ -67,7 +77,7 @@ impl<'source> Parser<'source> {
         let token = self.advance()?;
 
         if token.lexeme != expected {
-            Err(ParseErr::expected(expected, &token))
+            Err(ParseErr::expected_found(expected, &token))
         } else {
             Ok(())
         }
@@ -76,12 +86,23 @@ impl<'source> Parser<'source> {
     // same as expect_lexeme() but compare token type instead
     // used when possible for more performance
     fn expect_token_type(&mut self, expected: Token) -> Result<(), ParseErr> {
-        let token = self.advance()?;
-
-        if token.token_type != expected {
-            Err(ParseErr::expected(format!("{:?}", expected), &token))
-        } else {
-            Ok(())
+        match self.advance() {
+            Ok(token) => {
+                if token.token_type != expected {
+                    Err(ParseErr::expected_found(format!("{:?}", expected), &token))
+                } else {
+                    Ok(())
+                }
+            }
+            Err(_) => {
+                // When advance fails, return the expected-token error
+                // as the expexted token might be the last token, and eof error would be incorrect
+                Err(ParseErr::expected(
+                    format!("{:?}", expected),
+                    self.lexer.get_line_num(),
+                    self.lexer.get_col_num(),
+                ))
+            }
         }
     }
 
@@ -90,7 +111,7 @@ impl<'source> Parser<'source> {
         let program = ast::Program::new(self.parse_function()?);
 
         if let Ok(tok) = self.peek() {
-            Err(ParseErr::expected("end of input", tok))
+            Err(ParseErr::expected_found("end of input", tok))
         } else {
             Ok(program)
         }
@@ -120,7 +141,7 @@ impl<'source> Parser<'source> {
         if token.token_type == Token::Identifier {
             Ok(ast::Identifier(token.lexeme))
         } else {
-            Err(ParseErr::expected("identifier", &token))
+            Err(ParseErr::expected_found("identifier", &token))
         }
     }
 

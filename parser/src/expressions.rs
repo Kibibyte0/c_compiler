@@ -37,7 +37,7 @@ impl<'source> Parser<'source> {
         match token.lexeme {
             "-" => Ok(UnaryOP::Negation),
             "~" => Ok(UnaryOP::BitwiseComplement),
-            _ => Err(ParseErr::expected("unary operator", &token)),
+            _ => Err(ParseErr::expected_found("unary operator", &token)),
         }
     }
 
@@ -55,7 +55,7 @@ impl<'source> Parser<'source> {
             })?;
             Ok(Expression::Constant(value))
         } else {
-            Err(ParseErr::expected("integer constant", &token))
+            Err(ParseErr::expected_found("integer constant", &token))
         }
     }
 }
