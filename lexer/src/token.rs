@@ -4,12 +4,16 @@ use logos::Logos;
 #[derive(Debug, Default)]
 pub struct LinePosition {
     pub line_num: usize,
+    pub col_num: usize,
 }
 
 // callback function to be used whenever logos match a new line char
 // always return None to skip the newline
 fn update_line_num(lex: &mut logos::Lexer<Token>) {
     lex.extras.line_num += 1;
+    // reset the col_num to 0 not to one
+    // because when col number gets updated, it includes the column taken by the new line char
+    lex.extras.col_num = 0;
 }
 
 #[derive(Debug, PartialEq, Logos)]
