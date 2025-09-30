@@ -91,7 +91,17 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
 
         Stage::Codegen => {
-            // TODO: Implement code generation stage
+            let input_string = fs::read_to_string(&arg.file_path)?;
+            let lexer = lexer::Lexer::new(&input_string);
+            let mut parser = parser::Parser::build(lexer)?;
+            let program = parser.parse_program()?;
+            let ir = ir_gen::IRgen::new().emit_tacky(program);
+
+            let mut asm_gen = codegen::ASMgen::new();
+            let mut asm_program = asm_gen.emit_asm(ir);
+            asm_gen.allocate_registers(&mut asm_program);
+            asm_program.print();
+
         }
 
         Stage::None => {
