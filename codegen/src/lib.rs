@@ -1,48 +1,96 @@
-// use parser::ast::{Expression, FunctionDefinition, Program, Statement};
+use ir_gen::tacky;
+use std::collections::HashMap;
 
-// use crate::asm_ast::{AsmFunctionDefinition, AsmProgram, Instruction, Operand};
+mod asm_ast;
+mod reg_alloc;
 
-// pub mod asm_ast;
-// pub struct Codegen<'source> {
-//     program: Program<'source>,
-// }
+pub struct ASMgen {
+    pseudo_reg_map: HashMap<asm_ast::Identifier, i32>,
+    sp_offest: i32,
+}
 
-// impl<'source> Codegen<'source> {
-//     pub fn new(program: Program<'source>) -> Self {
-//         Self {
-//             program
-//         }
-//     }
+impl ASMgen {
+    pub fn new() -> Self {
+        Self {
+            pseudo_reg_map: HashMap::new(),
+            sp_offest: 0,
+        }
+    }
 
-//     pub fn gen_program(&'source self) -> AsmProgram<'source> {
-//         AsmProgram {
-//             function: Codegen::gen_function(&self.program.function),
-//         }
-//     }
+    pub fn emit_asm(&self, program: tacky::Program) -> asm_ast::Program {
+        let function = program.into_parts();
+        asm_ast::Program::new(self.emit_function_def(function))
+    }
 
-//     fn gen_function(function: &'source FunctionDefinition) -> AsmFunctionDefinition<'source> {
-//         AsmFunctionDefinition {
-//             name: &function.name.0,
-//             instructions:  Codegen::gen_body(&function.body),
-//         }
-//     }
+    fn emit_function_def(&self, function: tacky::FunctionDef) -> asm_ast::FunctionDef {
+        let (name, tacky_instructions) = function.into_parts();
+        let mut asm_instructions: Vec<asm_ast::Instruction> = Vec::new();
+        self.emit_instructions(tacky_instructions, &mut asm_instructions);
 
-//     fn gen_body(statement: &Statement) -> Vec<Instruction> {
-//         let mut instructions: Vec<Instruction> = Vec::new();
-//         match statement {
-//             Statement::Return(exp) =>
-//             Codegen::gen_return_statement(exp, &mut instructions),
-//         }
-//         instructions
-//     }
+        asm_ast::FunctionDef::new(asm_ast::Identifier(name.0), asm_instructions)
+    }
 
-//     fn gen_return_statement(exp: &Expression, instructions: &mut Vec<Instruction>) {
-//         let int = match exp {
-//             Expression::Constant(n) => n,
-//         };
-//         instructions.push(
-//             Instruction::Mov(Operand::Immediate(*int), Operand::Register)
-//         );
-//         instructions.push(Instruction::Ret);
-//     }
-// }
+    fn emit_instructions(
+        &self,
+        tacky_instructions: Vec<tacky::Instruction>,
+        asm_instructions: &mut Vec<asm_ast::Instruction>,
+    ) {
+        for tacky_instruction in tacky_instructions {
+            match tacky_instruction {
+                tacky::Instruction::Ret(val) => {
+                    self.emit_ret_instructions(val, asm_instructions);
+                }
+
+                tacky::Instruction::Unary { op, dst, src } => {
+                    self.emit_unary_instructions(op, dst, src, asm_instructions);
+                }
+            }
+        }
+    }
+
+    fn emit_ret_instructions(
+        &self,
+        val: tacky::Value,
+        asm_instructions: &mut Vec<asm_ast::Instruction>,
+    ) {
+        asm_instructions.push(asm_ast::Instruction::Mov {
+            dst: asm_ast::Operand::Reg(asm_ast::Register::AX),
+            src: self.convert_val(&val),
+        });
+        asm_instructions.push(asm_ast::Instruction::Ret);
+    }
+
+    fn emit_unary_instructions(
+        &self,
+        op: tacky::UnaryOP,
+        dst: tacky::Value,
+        src: tacky::Value,
+        asm_instructions: &mut Vec<asm_ast::Instruction>,
+    ) {
+        asm_instructions.push(asm_ast::Instruction::Mov {
+            dst: self.convert_val(&dst),
+            src: self.convert_val(&src),
+        });
+        asm_instructions.push(asm_ast::Instruction::Unary {
+            operator: self.convert_unary_op(op),
+            operand: self.convert_val(&dst),
+        });
+    }
+
+    fn convert_val(&self, val: &tacky::Value) -> asm_ast::Operand {
+        match val {
+            tacky::Value::Var(identifier) => {
+                asm_ast::Operand::Pseudo(asm_ast::Identifier(identifier.0.clone()))
+            }
+
+            tacky::Value::Constant(int) => asm_ast::Operand::Immediate(*int),
+        }
+    }
+
+    fn convert_unary_op(&self, op: tacky::UnaryOP) -> asm_ast::UnaryOP {
+        match op {
+            tacky::UnaryOP::BitwiseComplement => asm_ast::UnaryOP::Not,
+            tacky::UnaryOP::Negation => asm_ast::UnaryOP::Neg,
+        }
+    }
+}
