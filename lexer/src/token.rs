@@ -16,7 +16,7 @@ fn update_line_num(lex: &mut logos::Lexer<Token>) {
     lex.extras.col_num = 0;
 }
 
-#[derive(Debug, PartialEq, Logos)]
+#[derive(Debug, PartialEq, Logos, Clone, Copy)]
 #[logos(extras = LinePosition)]
 pub enum Token {
     // Identifiers: starts with a letter or underscore, followed by letters, digits, or underscores
@@ -46,6 +46,19 @@ pub enum Token {
 
     #[token("--")]
     Decrement,
+
+    // binary operators
+    #[token("+")]
+    Addition,
+
+    #[token("*")]
+    Multiplication,
+
+    #[token("/")]
+    Divison,
+
+    #[token("%")]
+    Mod,
 
     // Symbols
     #[token("(")]
@@ -77,9 +90,28 @@ pub enum Token {
 
 impl Token {
     pub fn is_unary(&self) -> bool {
-        match *self {
+        match self {
             Token::Negation | Token::BitwiseComplement => true,
             _ => false,
+        }
+    }
+
+    pub fn is_binary(&self) -> bool {
+        match self {
+            Token::Addition
+            | Token::Negation
+            | Token::Multiplication
+            | Token::Divison
+            | Token::Mod => true,
+            _ => false,
+        }
+    }
+
+    pub fn precednece(&self) -> usize {
+        match self {
+            Token::Multiplication | Token::Divison | Token::Mod => 50,
+            Token::Addition | Token::Negation => 45,
+            _ => 0,
         }
     }
 }

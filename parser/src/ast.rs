@@ -1,9 +1,12 @@
-pub struct Program<'source> {
-    function: FunctionDef<'source>,
+mod expressions;
+pub use expressions::{BinaryOP, Expression, UnaryOP};
+
+pub struct Program {
+    function: FunctionDef,
 }
 
-pub struct FunctionDef<'source> {
-    name: Identifier<'source>,
+pub struct FunctionDef {
+    name: Identifier,
     body: Statement,
 }
 
@@ -11,29 +14,18 @@ pub enum Statement {
     Return(Expression),
 }
 
-pub enum Expression {
-    Constant(i32),
-    Unary(UnaryOP, Box<Expression>),
-}
-
-#[derive(Debug)]
-pub enum UnaryOP {
-    Negation,
-    BitwiseComplement,
-}
-
-pub struct Identifier<'source>(pub &'source str);
+pub struct Identifier(pub String);
 
 //
 // Program impl
 //
 
-impl<'source> Program<'source> {
-    pub fn new(function: FunctionDef<'source>) -> Self {
+impl Program {
+    pub fn new(function: FunctionDef) -> Self {
         Self { function }
     }
 
-    pub fn into_parts(self) -> FunctionDef<'source> {
+    pub fn into_parts(self) -> FunctionDef {
         self.function
     }
 
@@ -42,7 +34,7 @@ impl<'source> Program<'source> {
     }
 
     fn print_with_indent(&self, indent: usize) {
-        println!("{0:1$}Program", "", indent);
+        println!("{}Program", " ".repeat(indent));
         self.function.print_with_indent(indent + 2);
     }
 }
@@ -51,27 +43,27 @@ impl<'source> Program<'source> {
 // Function impl
 //
 
-impl<'source> Default for FunctionDef<'source> {
+impl Default for FunctionDef {
     fn default() -> Self {
         Self {
-            name: Identifier("func"),
+            name: Identifier("func".to_string()),
             body: Statement::Return(Expression::Constant(1)),
         }
     }
 }
 
-impl<'source> FunctionDef<'source> {
-    pub fn new(name: Identifier<'source>, body: Statement) -> Self {
+impl FunctionDef {
+    pub fn new(name: Identifier, body: Statement) -> Self {
         Self { name, body }
     }
 
-    pub fn into_parts(self) -> (Identifier<'source>, Statement) {
+    pub fn into_parts(self) -> (Identifier, Statement) {
         (self.name, self.body)
     }
 
     fn print_with_indent(&self, indent: usize) {
-        println!("{0:1$}FunctionDef", "", indent);
-        println!("{0:1$}name: {2}", "", indent + 2, self.name.0);
+        println!("{}FunctionDef", " ".repeat(indent));
+        println!("{}name: {}", " ".repeat(indent + 2), self.name.0);
         self.body.print_with_indent(indent + 2);
     }
 }
@@ -80,21 +72,7 @@ impl Statement {
     fn print_with_indent(&self, indent: usize) {
         match self {
             Statement::Return(expr) => {
-                println!("{0:1$}Return", "", indent);
-                expr.print_with_indent(indent + 2);
-            }
-        }
-    }
-}
-
-impl Expression {
-    fn print_with_indent(&self, indent: usize) {
-        match self {
-            Expression::Constant(val) => {
-                println!("{0:1$}Constant({2})", "", indent, val);
-            }
-            Expression::Unary(op, expr) => {
-                println!("{0:1$}Unary({2:?})", "", indent, op);
+                println!("{}Return", " ".repeat(indent));
                 expr.print_with_indent(indent + 2);
             }
         }

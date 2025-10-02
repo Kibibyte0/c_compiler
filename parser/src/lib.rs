@@ -3,14 +3,13 @@ use parse_err::ParseErr;
 
 use crate::ast::Identifier;
 
-mod expressions;
 mod parse_err;
+mod parse_expressions;
 
 pub mod ast;
 
 pub struct Parser<'source> {
     lexer: Lexer<'source>,
-    current_token: Option<SpannedToken<'source>>,
     peeked_token: Option<SpannedToken<'source>>,
 }
 
@@ -23,7 +22,6 @@ impl<'source> Parser<'source> {
 
         Ok(Self {
             lexer,
-            current_token: None,
             peeked_token: Some(peeked_token),
         })
     }
@@ -38,7 +36,7 @@ impl<'source> Parser<'source> {
     }
 
     // advance the parser to the next token and return the current peeked token,
-    fn advance(&mut self) -> Result<&SpannedToken<'source>, ParseErr> {
+    fn advance(&mut self) -> Result<SpannedToken<'source>, ParseErr> {
         let token = self
             .peeked_token
             .take()
@@ -52,21 +50,13 @@ impl<'source> Parser<'source> {
             ));
         }
 
-        self.current_token = Some(token);
         self.peeked_token = self.lexer.next();
-        Ok(self.current()?)
+        Ok(token)
     }
 
     // return the peeked token, return end of input stream error if there is no token
     fn peek(&self) -> Result<&SpannedToken<'source>, ParseErr> {
         self.peeked_token
-            .as_ref()
-            .ok_or_else(|| self.unexpected_eof())
-    }
-
-    // return the current token, return end of input stream error if there is no token
-    fn current(&self) -> Result<&SpannedToken<'source>, ParseErr> {
-        self.current_token
             .as_ref()
             .ok_or_else(|| self.unexpected_eof())
     }
@@ -107,7 +97,7 @@ impl<'source> Parser<'source> {
     }
 
     // entry point for the parser
-    pub fn parse_program(&mut self) -> Result<ast::Program<'source>, ParseErr> {
+    pub fn parse_program(&mut self) -> Result<ast::Program, ParseErr> {
         let program = ast::Program::new(self.parse_function()?);
 
         if let Ok(tok) = self.peek() {
@@ -117,7 +107,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_function(&mut self) -> Result<ast::FunctionDef<'source>, ParseErr> {
+    fn parse_function(&mut self) -> Result<ast::FunctionDef, ParseErr> {
         self.expect_token_type(Token::Int)?;
 
         let name = self.parse_identifier()?;
@@ -135,11 +125,11 @@ impl<'source> Parser<'source> {
         Ok(ast::FunctionDef::new(name, body))
     }
 
-    fn parse_identifier(&mut self) -> Result<Identifier<'source>, ParseErr> {
+    fn parse_identifier(&mut self) -> Result<Identifier, ParseErr> {
         let token = self.advance()?;
 
         if token.token_type == Token::Identifier {
-            Ok(ast::Identifier(token.lexeme))
+            Ok(ast::Identifier(token.lexeme.to_string()))
         } else {
             Err(ParseErr::expected_found("identifier", &token))
         }
@@ -147,7 +137,7 @@ impl<'source> Parser<'source> {
 
     fn parse_statement(&mut self) -> Result<ast::Statement, ParseErr> {
         self.expect_token_type(Token::Return)?;
-        let exp = self.parse_expression()?;
+        let exp = self.parse_expression(0)?;
         self.expect_token_type(Token::Semicolon)?;
         Ok(ast::Statement::Return(exp))
     }

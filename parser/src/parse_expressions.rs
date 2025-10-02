@@ -1,3 +1,4 @@
+use crate::ast::BinaryOP;
 use crate::ast::UnaryOP;
 
 use super::ParseErr;
@@ -7,18 +8,35 @@ use lexer::token::Token;
 
 // impl block for C expressions
 impl<'source> Parser<'source> {
-    pub(crate) fn parse_expression(&mut self) -> Result<Expression, ParseErr> {
+    pub(crate) fn parse_expression(&mut self, min_prec: usize) -> Result<Expression, ParseErr> {
+        let mut left = self.parse_factor()?;
+
+        let mut next_token = self.peek()?.token_type;
+        while next_token.is_binary() && next_token.precednece() >= min_prec {
+            let op = self.parse_binary_op()?;
+            let right = self.parse_expression(next_token.precednece() + 1)?;
+            left = Expression::Binary {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+            next_token = self.peek()?.token_type;
+        }
+        return Ok(left);
+    }
+
+    fn parse_factor(&mut self) -> Result<Expression, ParseErr> {
         let next_token = self.peek()?;
 
         if next_token.token_type == Token::ConstantInt {
             self.parse_constant_int()
         } else if next_token.token_type.is_unary() {
             let op = self.parse_unary_op()?;
-            let inner_exp = self.parse_expression()?;
+            let inner_exp = self.parse_factor()?;
             Ok(Expression::Unary(op, Box::new(inner_exp)))
         } else if next_token.token_type == Token::LeftParenthesis {
             self.advance()?;
-            let inner_exp = self.parse_expression();
+            let inner_exp = self.parse_expression(0);
             self.expect_token_type(Token::RightParenthesis)?;
             inner_exp
         } else {
@@ -30,13 +48,27 @@ impl<'source> Parser<'source> {
         }
     }
 
+    // parse a binary operator
+    fn parse_binary_op(&mut self) -> Result<BinaryOP, ParseErr> {
+        let token = self.advance()?;
+
+        match token.token_type {
+            Token::Addition => Ok(BinaryOP::Addition),
+            Token::Negation => Ok(BinaryOP::Subtraction),
+            Token::Multiplication => Ok(BinaryOP::Multiplication),
+            Token::Divison => Ok(BinaryOP::Division),
+            Token::Mod => Ok(BinaryOP::Mod),
+            _ => Err(ParseErr::expected_found("binary operator", &token)),
+        }
+    }
+
     // parse a unary operator
     fn parse_unary_op(&mut self) -> Result<UnaryOP, ParseErr> {
         let token = self.advance()?;
 
-        match token.lexeme {
-            "-" => Ok(UnaryOP::Negation),
-            "~" => Ok(UnaryOP::BitwiseComplement),
+        match token.token_type {
+            Token::Negation => Ok(UnaryOP::Negation),
+            Token::BitwiseComplement => Ok(UnaryOP::BitwiseComplement),
             _ => Err(ParseErr::expected_found("unary operator", &token)),
         }
     }
