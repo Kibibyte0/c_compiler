@@ -1,52 +1,24 @@
-use std::fmt;
+mod instructions;
+pub use instructions::{BinaryOP, Instruction, UnaryOP, Value};
 
-pub enum Instruction {
-    Unary { op: UnaryOP, dst: Value, src: Value },
-    Ret(Value),
+pub struct Program {
+    function: FunctionDef,
 }
 
-pub enum UnaryOP {
-    BitwiseComplement,
-    Negation,
-}
-
-impl fmt::Display for UnaryOP {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            UnaryOP::BitwiseComplement => write!(f, "BitwiseComplement"),
-            UnaryOP::Negation => write!(f, "Negation"),
-        }
-    }
-}
-
-pub enum Value {
-    Constant(i32),
-    Var(String),
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Constant(val) => write!(f, "{}", val),
-            Value::Var(name) => write!(f, "{}", name),
-        }
-    }
-}
-
-pub struct Program<'source> {
-    function: FunctionDef<'source>,
-}
-
-pub struct FunctionDef<'source> {
-    name: Identifier<'source>,
+pub struct FunctionDef {
+    name: Identifier,
     instructions: Vec<Instruction>,
 }
 
-pub struct Identifier<'source>(pub &'source str);
+pub struct Identifier(pub String);
 
-impl<'source> Program<'source> {
-    pub fn new(function: FunctionDef<'source>) -> Self {
+impl Program {
+    pub fn new(function: FunctionDef) -> Self {
         Self { function }
+    }
+
+    pub fn into_parts(self) -> FunctionDef {
+        self.function
     }
 
     pub fn print(&self) {
@@ -59,9 +31,13 @@ impl<'source> Program<'source> {
     }
 }
 
-impl<'source> FunctionDef<'source> {
-    pub fn new(name: Identifier<'source>, instructions: Vec<Instruction>) -> Self {
+impl FunctionDef {
+    pub fn new(name: Identifier, instructions: Vec<Instruction>) -> Self {
         Self { name, instructions }
+    }
+
+    pub fn into_parts(self) -> (Identifier, Vec<Instruction>) {
+        (self.name, self.instructions)
     }
 
     fn print_with_indent(&self, indent: usize) {
@@ -73,20 +49,7 @@ impl<'source> FunctionDef<'source> {
     fn print_instructions(&self, indent: usize) {
         println!("{}Instructions:", " ".repeat(indent));
         for instruction in &self.instructions {
-            match instruction {
-                Instruction::Ret(val) => {
-                    println!("{}Ret({})", " ".repeat(indent + 2), val);
-                }
-                Instruction::Unary { op, dst, src } => {
-                    println!(
-                        "{}{}(dst: {}, src: {})",
-                        " ".repeat(indent + 2),
-                        op,
-                        dst,
-                        src
-                    );
-                }
-            }
+            instruction.print(indent + 2);
         }
     }
 }
