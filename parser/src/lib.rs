@@ -63,20 +63,8 @@ impl<'source> Parser<'source> {
             .ok_or_else(|| self.unexpected_eof())
     }
 
-    // compare the current token lexmme to an expected string and advance
-    // report error if the do not match
-    fn _expect_lexeme(&mut self, expected: &str) -> Result<(), ParseErr> {
-        let token = self.advance()?;
-
-        if token.lexeme != expected {
-            Err(ParseErr::expected_found(expected, &token))
-        } else {
-            Ok(())
-        }
-    }
-
-    // same as expect_lexeme() but compare token type instead
-    // used when possible for more performance
+    // compare the next_token with the expected token type
+    // return error If they don't match, the lexeme parameter is used for error logging
     fn expect_token_type(&mut self, expected: Token, lexeme: &'static str) -> Result<(), ParseErr> {
         match self.advance() {
             Ok(token) => {
