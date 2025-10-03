@@ -16,9 +16,9 @@ pub struct Parser<'source> {
 impl<'source> Parser<'source> {
     // create a new parser instance, return an 'input is empty' error if there is no tokens
     pub fn build(mut lexer: Lexer<'source>) -> Result<Self, ParseErr> {
-        let peeked_token = lexer
-            .next()
-            .ok_or_else(|| ParseErr::new(String::from("input is empty"), 0, 0))?;
+        let peeked_token = lexer.next().ok_or_else(|| {
+            ParseErr::new(String::from("input is empty"), lexer.get_file_name(), 0, 0)
+        })?;
 
         Ok(Self {
             lexer,
@@ -30,6 +30,7 @@ impl<'source> Parser<'source> {
     fn unexpected_eof(&self) -> ParseErr {
         ParseErr::new(
             "unexpected end of input".to_string(),
+            self.lexer.get_file_name(),
             self.lexer.get_line_num(),
             self.lexer.get_col_num(),
         )
@@ -45,6 +46,7 @@ impl<'source> Parser<'source> {
         if token.token_type == Token::Error {
             return Err(ParseErr::new(
                 format!("invalid token: {}", token.lexeme),
+                token.file_name.to_string(),
                 token.line_num,
                 token.col_start,
             ));
@@ -75,11 +77,11 @@ impl<'source> Parser<'source> {
 
     // same as expect_lexeme() but compare token type instead
     // used when possible for more performance
-    fn expect_token_type(&mut self, expected: Token) -> Result<(), ParseErr> {
+    fn expect_token_type(&mut self, expected: Token, lexeme: &'static str) -> Result<(), ParseErr> {
         match self.advance() {
             Ok(token) => {
                 if token.token_type != expected {
-                    Err(ParseErr::expected_found(format!("{:?}", expected), &token))
+                    Err(ParseErr::expected_found(lexeme, &token))
                 } else {
                     Ok(())
                 }
@@ -89,6 +91,7 @@ impl<'source> Parser<'source> {
                 // as the expexted token might be the last token, and eof error would be incorrect
                 Err(ParseErr::expected(
                     format!("{:?}", expected),
+                    self.lexer.get_file_name(),
                     self.lexer.get_line_num(),
                     self.lexer.get_col_num(),
                 ))
@@ -108,19 +111,19 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_function(&mut self) -> Result<ast::FunctionDef, ParseErr> {
-        self.expect_token_type(Token::Int)?;
+        self.expect_token_type(Token::Int, "int")?;
 
         let name = self.parse_identifier()?;
 
-        self.expect_token_type(Token::LeftParenthesis)?;
-        self.expect_token_type(Token::Void)?;
-        self.expect_token_type(Token::RightParenthesis)?;
+        self.expect_token_type(Token::LeftParenthesis, "(")?;
+        self.expect_token_type(Token::Void, "void")?;
+        self.expect_token_type(Token::RightParenthesis, ")")?;
 
-        self.expect_token_type(Token::LeftCurlyBracket)?;
+        self.expect_token_type(Token::LeftCurlyBracket, "{")?;
 
         let body = self.parse_statement()?;
 
-        self.expect_token_type(Token::RightCurlyBracket)?;
+        self.expect_token_type(Token::RightCurlyBracket, "}")?;
 
         Ok(ast::FunctionDef::new(name, body))
     }
@@ -136,9 +139,9 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_statement(&mut self) -> Result<ast::Statement, ParseErr> {
-        self.expect_token_type(Token::Return)?;
+        self.expect_token_type(Token::Return, "return")?;
         let exp = self.parse_expression(0)?;
-        self.expect_token_type(Token::Semicolon)?;
+        self.expect_token_type(Token::Semicolon, ";")?;
         Ok(ast::Statement::Return(exp))
     }
 }

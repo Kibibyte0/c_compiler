@@ -4,15 +4,17 @@ use std::fmt;
 
 #[derive(Debug)]
 pub struct ParseErr {
-    pub message: String,
-    pub line: usize,
-    pub column: usize,
+    message: String,
+    file_name: String,
+    line: usize,
+    column: usize,
 }
 
 impl ParseErr {
-    pub fn new(message: String, line: usize, column: usize) -> Self {
+    pub fn new(message: String, file_name: String, line: usize, column: usize) -> Self {
         ParseErr {
             message,
+            file_name,
             line,
             column,
         }
@@ -21,17 +23,28 @@ impl ParseErr {
     pub fn expected_found(expected: impl ToString, found: &SpannedToken) -> Self {
         ParseErr::new(
             format!(
-                "expected {}, found '{}'",
+                "expected '{}', found '{}'",
                 expected.to_string(),
                 found.lexeme
             ),
+            found.file_name.to_string(),
             found.line_num,
             found.col_start,
         )
     }
 
-    pub fn expected(expected: impl ToString, line: usize, column: usize) -> Self {
-        ParseErr::new(format!("expected {}", expected.to_string(),), line, column)
+    pub fn expected(
+        expected: impl ToString,
+        file_name: String,
+        line: usize,
+        column: usize,
+    ) -> Self {
+        ParseErr::new(
+            format!("expected {}", expected.to_string()),
+            file_name,
+            line,
+            column,
+        )
     }
 }
 
@@ -39,8 +52,8 @@ impl fmt::Display for ParseErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Parse error at line {}, column {}: {}",
-            self.line, self.column, self.message
+            "{}: Parse error at line {}, column {}: {}",
+            self.file_name, self.line, self.column, self.message
         )
     }
 }

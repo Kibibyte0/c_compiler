@@ -6,33 +6,23 @@ pub mod token;
 #[derive(Debug)]
 pub struct SpannedToken<'source> {
     pub token_type: Token,
+    pub file_name: &'source str,
     pub lexeme: &'source str,
     pub line_num: usize,
     pub col_start: usize,
     pub col_end: usize,
 }
 
-impl<'source> Default for SpannedToken<'source> {
-    fn default() -> Self {
-        Self {
-            token_type: Token::Skip,
-            lexeme: "",
-            line_num: 0,
-            col_start: 0,
-            col_end: 0,
-        }
-    }
-}
-
 pub struct Lexer<'source> {
     lex: logos::Lexer<'source, Token>,
+    file_name: &'source str,
     // keeping tack of the end pos of the previous token relative to the input
     // String helps with calculating the col number relative to the current line
     prev_token_end_pos: usize,
 }
 
 impl<'source> Lexer<'source> {
-    pub fn new(input: &'source str) -> Self {
+    pub fn new(input: &'source str, file_name: &'source str) -> Self {
         let extras = LinePosition {
             line_num: 1,
             col_num: 1,
@@ -40,6 +30,7 @@ impl<'source> Lexer<'source> {
 
         Self {
             lex: Token::lexer_with_extras(input, extras),
+            file_name,
             prev_token_end_pos: 0,
         }
     }
@@ -61,6 +52,7 @@ impl<'source> Lexer<'source> {
                 _ => {
                     return Some(SpannedToken {
                         token_type: token,
+                        file_name: self.file_name,
                         lexeme: self.lex.slice(),
                         line_num: self.lex.extras.line_num,
                         // to calculate the start of the token, we subtract col_num,
@@ -71,6 +63,10 @@ impl<'source> Lexer<'source> {
                 }
             }
         }
+    }
+
+    pub fn get_file_name(&self) -> String {
+        self.file_name.to_string()
     }
 
     pub fn get_line_num(&self) -> usize {

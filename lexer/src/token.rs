@@ -23,11 +23,17 @@ pub enum Token {
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", priority = 0)]
     Identifier,
 
-    // Integer constants (decimal only)
+    //
+    // literals
+    //
+
+    // Integer constants
     #[regex(r"\d+")]
     ConstantInt,
 
+    //
     // Keywords
+    //
     #[token("return")]
     Return,
 
@@ -37,30 +43,65 @@ pub enum Token {
     #[token("void")]
     Void,
 
-    // unary operators
-    #[token("~")]
-    BitwiseComplement,
+    //
+    // Operators
+    //
 
+    // Arithmatic operators
     #[token("-")]
-    Negation,
+    Neg,
 
     #[token("--")]
-    Decrement,
+    Dec,
 
-    // binary operators
     #[token("+")]
-    Addition,
+    Add,
 
     #[token("*")]
-    Multiplication,
+    Mul,
 
     #[token("/")]
-    Divison,
+    Div,
 
     #[token("%")]
     Mod,
 
+    // logical operators
+    #[token("&&")]
+    LogicalAnd,
+
+    #[token("||")]
+    LogicalOr,
+
+    #[token("!")]
+    LogicalNot,
+
+    // comparison operators
+    #[token("==")]
+    Equal,
+
+    #[token("!=")]
+    NotEqual,
+
+    #[token("<")]
+    LessThan,
+
+    #[token(">")]
+    GreaterThan,
+
+    #[token("<=")]
+    LessThanOrEq,
+
+    #[token(">=")]
+    GreaterThanOrEq,
+
+    // bitwise operators
+    #[token("~")]
+    Not,
+
+    //
     // Symbols
+    //
     #[token("(")]
     LeftParenthesis,
 
@@ -91,26 +132,36 @@ pub enum Token {
 impl Token {
     pub fn is_unary(&self) -> bool {
         match self {
-            Token::Negation | Token::BitwiseComplement => true,
+            Token::Neg | Token::Not | Token::LogicalNot => true,
             _ => false,
         }
     }
 
     pub fn is_binary(&self) -> bool {
         match self {
-            Token::Addition
-            | Token::Negation
-            | Token::Multiplication
-            | Token::Divison
-            | Token::Mod => true,
+            // arithmatic
+            Token::Add
+            | Token::Neg
+            | Token::Mul
+            | Token::Div
+            | Token::Mod
+            // logical
+            | Token::LogicalAnd
+            | Token::LogicalOr
+            | Token::Equal
+            | Token::NotEqual
+            | Token::LessThan
+            | Token::GreaterThan
+            | Token::LessThanOrEq
+            | Token::GreaterThanOrEq => true,
             _ => false,
         }
     }
 
     pub fn precednece(&self) -> usize {
         match self {
-            Token::Multiplication | Token::Divison | Token::Mod => 50,
-            Token::Addition | Token::Negation => 45,
+            Token::Mul | Token::Div | Token::Mod => 50,
+            Token::Add | Token::Neg => 45,
             _ => 0,
         }
     }
