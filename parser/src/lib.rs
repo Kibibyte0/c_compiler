@@ -5,6 +5,7 @@ use crate::ast::Identifier;
 
 mod parse_err;
 mod parse_expressions;
+mod print_ast;
 
 pub mod ast;
 

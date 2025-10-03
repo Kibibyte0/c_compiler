@@ -41,26 +41,3 @@ pub enum BinaryOP {
     LessThanOrEq,
     GreaterThanOrEq,
 }
-
-impl Expression {
-    pub fn print_with_indent(&self, indent: usize) {
-        match self {
-            Expression::Constant(val) => {
-                println!("{}Constant({})", " ".repeat(indent), val);
-            }
-            Expression::Unary { operator, operand } => {
-                println!("{}Unary({:?})", " ".repeat(indent), operator);
-                operand.print_with_indent(indent + 2);
-            }
-            Expression::Binary {
-                operator,
-                operand1,
-                operand2,
-            } => {
-                println!("{}Binary({:?})", " ".repeat(indent), operator);
-                operand1.print_with_indent(indent + 2);
-                operand2.print_with_indent(indent + 2);
-            }
-        }
-    }
-}
