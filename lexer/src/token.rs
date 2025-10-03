@@ -162,6 +162,12 @@ impl Token {
         match self {
             Token::Mul | Token::Div | Token::Mod => 50,
             Token::Add | Token::Neg => 45,
+            Token::LessThan | Token::LessThanOrEq | Token::GreaterThan | Token::GreaterThanOrEq => {
+                35
+            }
+            Token::Equal | Token::NotEqual => 30,
+            Token::LogicalAnd => 10,
+            Token::LogicalOr => 5,
             _ => 0,
         }
     }
