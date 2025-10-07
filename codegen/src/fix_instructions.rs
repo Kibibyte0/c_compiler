@@ -1,35 +1,18 @@
-use crate::ASMgen;
+use crate::InstructionFix;
 use crate::asm;
 
 use crate::asm::{Operand::Reg, Register};
 
-impl ASMgen {
+impl InstructionFix {
     // this function fix up the instructions by replacing the old vector with a new one
-    pub fn fix_instructions(&self, program: &mut asm::Program) {
+    pub fn fix_instructions(program: &mut asm::Program) {
         let function = program.get_mut_function();
         let instructions = function.get_mut_instructions();
 
         let mut new_instructions: Vec<asm::Instruction> = Vec::new();
 
         for instr in instructions.drain(..) {
-            let fix_up = match &instr {
-                asm::Instruction::Mov { src, dst } => {
-                    ASMgen::fix_mov_instruction(dst, src, &mut new_instructions)
-                }
-                asm::Instruction::Binary { op, src, dst } => match op {
-                    asm::BinaryOP::Add | asm::BinaryOP::Sub => {
-                        ASMgen::fix_add_sub_instruction(op, src, dst, &mut new_instructions)
-                    }
-                    asm::BinaryOP::Mul => {
-                        ASMgen::fix_mul_instruction(src, dst, &mut new_instructions)
-                    }
-                },
-                asm::Instruction::Idiv(src) => {
-                    ASMgen::fix_div_instruction(src, &mut new_instructions)
-                }
-                _ => false,
-            };
-
+            let fix_up = Self::fix_instruction(&instr, &mut new_instructions);
             if !fix_up {
                 new_instructions.push(instr);
             }
@@ -38,23 +21,43 @@ impl ASMgen {
         *instructions = new_instructions;
     }
 
+    fn fix_instruction(
+        instr: &asm::Instruction,
+        new_instructions: &mut Vec<asm::Instruction>,
+    ) -> bool {
+        use asm::Instruction::*;
+
+        match instr {
+            Mov { src, dst } => Self::fix_mov(src, dst, new_instructions),
+            Cmp(src1, src2) => Self::fix_cmp(src1, src2, new_instructions),
+            Binary { op, src, dst } => match op {
+                asm::BinaryOP::Add | asm::BinaryOP::Sub => {
+                    Self::fix_add_sub(op, src, dst, new_instructions)
+                }
+                asm::BinaryOP::Mul => Self::fix_mul(src, dst, new_instructions),
+            },
+            Idiv(src) => Self::fix_div(src, new_instructions),
+            _ => false,
+        }
+    }
+
     // fix up mov instructions, if the instruction is invalid.
-    // some mov instructions will have stack address as both dst and src
+    // some mov instructions might have stack address as both dst and src
     // which is not allowed in x86_64 assembly
     // return true if a fix up happens
-    fn fix_mov_instruction(
+    fn fix_mov(
         src: &asm::Operand,
         dst: &asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if ASMgen::is_stack(dst) && ASMgen::is_stack(src) {
+        if Self::is_stack(dst) && Self::is_stack(src) {
             new_instructions.push(asm::Instruction::Mov {
-                dst: asm::Operand::Reg(asm::Register::R10),
                 src: src.clone(),
+                dst: asm::Operand::Reg(asm::Register::R10),
             });
             new_instructions.push(asm::Instruction::Mov {
-                dst: dst.clone(),
                 src: asm::Operand::Reg(asm::Register::R10),
+                dst: dst.clone(),
             });
             true
         } else {
@@ -63,16 +66,16 @@ impl ASMgen {
     }
 
     // fix binary instructions, if the instruction is invalid
-    // some binary op instructions will have stack address as both dst and src
+    // some binary op instructions might have stack address as both dst and src
     // which is not allowed in x86_64 assembly
     // return true if a fix up happens
-    fn fix_add_sub_instruction(
+    fn fix_add_sub(
         op: &asm::BinaryOP,
         src: &asm::Operand,
         dst: &asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if ASMgen::is_stack(dst) && ASMgen::is_stack(src) {
+        if Self::is_stack(dst) && Self::is_stack(src) {
             new_instructions.push(asm::Instruction::Mov {
                 src: src.clone(),
                 dst: Reg(Register::R10),
@@ -89,13 +92,10 @@ impl ASMgen {
     }
 
     // fix div instruction, if the instruction is invalid
-    // some div op will have a stack address as a src, which is not allowed.
+    // some div op might have an immediate as a src, which is not allowed.
     // return true if the fix up happens
-    fn fix_div_instruction(
-        src: &asm::Operand,
-        new_instructions: &mut Vec<asm::Instruction>,
-    ) -> bool {
-        if ASMgen::is_stack(src) {
+    fn fix_div(src: &asm::Operand, new_instructions: &mut Vec<asm::Instruction>) -> bool {
+        if Self::is_immediate(src) {
             new_instructions.push(asm::Instruction::Mov {
                 src: src.clone(),
                 dst: Reg(Register::R10),
@@ -110,12 +110,12 @@ impl ASMgen {
     // fix mul instruction, if the instruction is invalid
     // some mul op will have a stack address as dst, which is not allowed.
     // return true if the fix up happens
-    fn fix_mul_instruction(
+    fn fix_mul(
         src: &asm::Operand,
         dst: &asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if ASMgen::is_stack(dst) {
+        if Self::is_stack(dst) {
             new_instructions.push(asm::Instruction::Mov {
                 src: dst.clone(),
                 dst: Reg(Register::R11),
@@ -135,10 +135,51 @@ impl ASMgen {
         }
     }
 
+    // fix up cmp instructions, if the instruction is invalid.
+    // some cmp instructions might have stack address as both dst and src,
+    // they might have an immediate as the second operand, both of which are invalid
+    // return true if a fix up happens
+    fn fix_cmp(
+        src1: &asm::Operand,
+        src2: &asm::Operand,
+        new_instructions: &mut Vec<asm::Instruction>,
+    ) -> bool {
+        if Self::is_stack(src1) && Self::is_stack(src2) {
+            new_instructions.push(asm::Instruction::Mov {
+                src: src1.clone(),
+                dst: asm::Operand::Reg(asm::Register::R10),
+            });
+            new_instructions.push(asm::Instruction::Cmp(
+                asm::Operand::Reg(Register::R10),
+                src2.clone(),
+            ));
+            true
+        } else if Self::is_immediate(src2) {
+            new_instructions.push(asm::Instruction::Mov {
+                src: src2.clone(),
+                dst: asm::Operand::Reg(asm::Register::R11),
+            });
+            new_instructions.push(asm::Instruction::Cmp(
+                asm::Operand::Reg(Register::R11),
+                src2.clone(),
+            ));
+            true
+        } else {
+            false
+        }
+    }
+
     // helper to check if an operand is a stack address
     fn is_stack(op: &asm::Operand) -> bool {
         match op {
             asm::Operand::Stack(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_immediate(op: &asm::Operand) -> bool {
+        match op {
+            asm::Operand::Immediate(_) => true,
             _ => false,
         }
     }

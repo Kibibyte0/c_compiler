@@ -1,7 +1,7 @@
-use crate::ASMgen;
+use crate::RegisterAllocation;
 use crate::asm;
 
-impl ASMgen {
+impl RegisterAllocation {
     // alocate real memory addresses for all the pseudo registers
     pub fn allocate_registers(&mut self, program: &mut asm::Program) {
         let function = program.get_mut_function();
@@ -36,6 +36,15 @@ impl ASMgen {
             }
 
             asm::Instruction::Idiv(src) => {
+                self.to_stack(src);
+            }
+
+            asm::Instruction::Cmp(src1, src2) => {
+                self.to_stack(src1);
+                self.to_stack(src2);
+            }
+
+            asm::Instruction::SetCC(_, src) => {
                 self.to_stack(src);
             }
 

@@ -1,5 +1,5 @@
 use crate::asm::Identifier;
-use std::fmt;
+// use std::fmt;
 
 #[derive(Clone)]
 pub enum Instruction {
@@ -16,47 +16,33 @@ pub enum Instruction {
         src: Operand,
         dst: Operand,
     },
+    Cmp(Operand, Operand),
     Idiv(Operand),
     Cdq,
+    Jmp(Identifier),
+    JmpCC(Cond, Identifier),
+    SetCC(Cond, Operand),
+    Label(Identifier),
     AllocateStack(i32),
     Ret,
 }
 
-impl fmt::Display for Instruction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Instruction::Mov { src, dst } => write!(f, "Mov(src: {}, dst: {})", src, dst),
-            Instruction::Unary { op, dst } => {
-                write!(f, "Unary(op: {:?}, dst: {})", op, dst)
-            }
-            Instruction::AllocateStack(size) => write!(f, "AllocateStack({})", size),
-            Instruction::Ret => write!(f, "Ret"),
-            Instruction::Binary { op, src, dst } => {
-                write!(f, "Binary(op: {:?}, src: {}, dst: {})", op, src, dst)
-            }
-            Instruction::Idiv(operand) => write!(f, "Idv({})", operand),
-            Instruction::Cdq => write!(f, "Cdq"),
-        }
-    }
+#[derive(Clone, Debug)]
+pub enum Cond {
+    E,
+    NE,
+    G,
+    GE,
+    L,
+    LE,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Operand {
     Reg(Register),
     Pseudo(Identifier),
     Stack(i32),
     Immediate(i32),
-}
-
-impl fmt::Display for Operand {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Operand::Reg(reg) => write!(f, "{:?}", reg),
-            Operand::Pseudo(id) => write!(f, "Pseudo({})", id.0),
-            Operand::Stack(offset) => write!(f, "Stack({})", offset),
-            Operand::Immediate(val) => write!(f, "Immediate({})", val),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
