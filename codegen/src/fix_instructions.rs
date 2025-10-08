@@ -137,7 +137,7 @@ impl InstructionFix {
 
     // fix up cmp instructions, if the instruction is invalid.
     // some cmp instructions might have stack address as both dst and src,
-    // they might have an immediate as the second operand, both of which are invalid
+    // and they might have an immediate as the second operand, both of which are invalid
     // return true if a fix up happens
     fn fix_cmp(
         src1: &asm::Operand,
@@ -160,8 +160,8 @@ impl InstructionFix {
                 dst: asm::Operand::Reg(asm::Register::R11),
             });
             new_instructions.push(asm::Instruction::Cmp(
+                src1.clone(),
                 asm::Operand::Reg(Register::R11),
-                src2.clone(),
             ));
             true
         } else {
