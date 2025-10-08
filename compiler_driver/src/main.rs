@@ -1,4 +1,8 @@
 use clap::Parser;
+//use emitter::Emitter;
+use codegen::{self, AsmGen, DebuggingPrinter, InstructionFix, RegisterAllocation};
+use emitter::Emitter;
+use parser;
 use std::path::PathBuf;
 use std::{error::Error, fs};
 
@@ -63,51 +67,110 @@ fn run() -> Result<(), Box<dyn Error>> {
     let arg = Cli::parse();
 
     match arg.selected_stage() {
-        Stage::Lex => {
-            let input_string = fs::read_to_string(&arg.file_path)?;
-            let mut lexer = lexer::Lexer::new(&input_string);
-            while let Some(tok) = lexer.next() {
-                println!(
-                    "matched string: {}, token type: {:?}, line: {}, column: {}",
-                    tok.lexeme, tok.token_type, tok.line_num, tok.col_start
-                );
-            }
-        }
+        Stage::Lex => lexer_stage(arg.file_path),
 
-        Stage::Parse => {
-            let input_string = fs::read_to_string(&arg.file_path)?;
-            let lexer = lexer::Lexer::new(&input_string);
-            let mut parser = parser::Parser::build(lexer)?;
-            let program = parser.parse_program()?;
-            program.print();
-        }
+        Stage::Parse => parser_stage(arg.file_path),
 
-        Stage::Tacky => {
-            let input_string = fs::read_to_string(&arg.file_path)?;
-            let lexer = lexer::Lexer::new(&input_string);
-            let mut parser = parser::Parser::build(lexer)?;
-            let program = parser.parse_program()?;
-            ir_gen::IRgen::new().emit_tacky(program).print();
-        }
+        Stage::Tacky => tacky_stage(arg.file_path),
 
-        Stage::Codegen => {
-            let input_string = fs::read_to_string(&arg.file_path)?;
-            let lexer = lexer::Lexer::new(&input_string);
-            let mut parser = parser::Parser::build(lexer)?;
-            let program = parser.parse_program()?;
-            let ir = ir_gen::IRgen::new().emit_tacky(program);
+        Stage::Codegen => codegen_stage(arg.file_path),
 
-            let mut asm_gen = codegen::ASMgen::new();
-            let mut asm_program = asm_gen.emit_asm(ir);
-            asm_gen.allocate_registers(&mut asm_program);
-            asm_program.print();
-
-        }
-
-        Stage::None => {
-            // TODO: Chain the whole compilation pipeline
-        }
+        Stage::None => emit_assembly(arg.file_path),
     }
+}
+
+// lex the program then exit without starting the other stages
+fn lexer_stage(file_path: PathBuf) -> Result<(), Box<dyn Error>> {
+    let input_string = fs::read_to_string(&file_path)?;
+    let file_name = file_path
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .ok_or_else(|| "Failed to extract file name as valid UTF-8")?;
+
+    let mut lexer = lexer::Lexer::new(&input_string, file_name);
+
+    while let Some(tok) = lexer.next() {
+        println!(
+            "matched string: {}, token type: {:?}",
+            tok.get_lexeme(),
+            tok.get_token()
+        );
+    }
+
+    Ok(())
+}
+
+fn parser_stage(file_path: PathBuf) -> Result<(), Box<dyn Error>> {
+    let input_string = fs::read_to_string(&file_path)?;
+    let file_name = file_path
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .ok_or_else(|| "Failed to extract file name as valid UTF-8")?;
+
+    let lexer = lexer::Lexer::new(&input_string, file_name);
+    let program_ast = parser::Parser::new(lexer)?.parse_program()?;
+    parser::Parser::print(program_ast);
+
+    Ok(())
+}
+
+fn tacky_stage(file_path: PathBuf) -> Result<(), Box<dyn Error>> {
+    let input_string = fs::read_to_string(&file_path)?;
+    let file_name = file_path
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .ok_or_else(|| "Failed to extract file name as valid UTF-8")?;
+
+    let lexer = lexer::Lexer::new(&input_string, file_name);
+    let program_ast = parser::Parser::new(lexer)?.parse_program()?;
+    let program_ir = ir_gen::IRgen::new().gen_tacky(program_ast);
+    ir_gen::IRgen::print(program_ir);
+
+    Ok(())
+}
+
+fn codegen_stage(file_path: PathBuf) -> Result<(), Box<dyn Error>> {
+    let input_string = fs::read_to_string(&file_path)?;
+    let file_name = file_path
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .ok_or_else(|| "Failed to extract file name as valid UTF-8")?;
+
+    let lexer = lexer::Lexer::new(&input_string, file_name);
+    let program_ast = parser::Parser::new(lexer)?.parse_program()?;
+    let program_ir = ir_gen::IRgen::new().gen_tacky(program_ast);
+
+    let mut program_asm = AsmGen::gen_asm(program_ir);
+
+    let mut codegen = RegisterAllocation::new();
+    codegen.allocate_registers(&mut program_asm);
+
+    InstructionFix::fix_instructions(&mut program_asm);
+    DebuggingPrinter::print(program_asm);
+
+    Ok(())
+}
+
+fn emit_assembly(mut file_path: PathBuf) -> Result<(), Box<dyn Error>> {
+    let input_string = fs::read_to_string(&file_path)?;
+    let file_name = file_path
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .ok_or_else(|| "Failed to extract file name as valid UTF-8")?;
+
+    let lexer = lexer::Lexer::new(&input_string, file_name);
+    let program_ast = parser::Parser::new(lexer)?.parse_program()?;
+    let program_ir = ir_gen::IRgen::new().gen_tacky(program_ast);
+
+    let mut program_asm = AsmGen::gen_asm(program_ir);
+
+    let mut codegen = RegisterAllocation::new();
+    codegen.allocate_registers(&mut program_asm);
+
+    InstructionFix::fix_instructions(&mut program_asm);
+
+    file_path.set_file_name("out.s");
+    Emitter::new(12, 16, 2).write_program(program_asm, file_path)?;
 
     Ok(())
 }

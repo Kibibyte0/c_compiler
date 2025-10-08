@@ -1,7 +1,9 @@
-use codegen::asm_ast;
+use codegen::asm;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+
+mod write_instructions;
 
 pub struct Emitter {
     opcode_width: usize,
@@ -22,7 +24,7 @@ impl Emitter {
 
     pub fn write_program(
         &self,
-        program: asm_ast::Program,
+        program: asm::Program,
         output_file_path: PathBuf,
     ) -> std::io::Result<()> {
         let mut file = File::create(output_file_path)?;
@@ -45,7 +47,7 @@ impl Emitter {
 
     fn write_function_def(
         &self,
-        function: asm_ast::FunctionDef,
+        function: asm::FunctionDef,
         code: &mut String,
     ) -> std::fmt::Result {
         let (name, instructions) = function.into_parts();
@@ -58,72 +60,14 @@ impl Emitter {
         Ok(())
     }
 
-    fn write_function_def_prolouge(&self, code: &mut String, name: asm_ast::Identifier) {
+    fn write_function_def_prolouge(&self, code: &mut String, name: asm::Identifier) {
         code.push_str(&format!("{}.globl {}\n", self.indent, name.0));
         code.push_str(&format!("{}:\n", name.0));
 
-        let instr1 = self.format_one_operand_instruction("pushq", "%rsp");
+        let instr1 = self.format_one_operand_instruction("pushq", "%rbp");
         code.push_str(&format!("{}", instr1));
 
         let instr2 = self.format_two_operand_instruction("movq", "%rsp,", "%rbp");
         code.push_str(&format!("{}", instr2));
-    }
-
-    fn write_instruction(
-        &self,
-        instr: asm_ast::Instruction,
-        out: &mut dyn std::fmt::Write,
-    ) -> std::fmt::Result {
-        match instr {
-            asm_ast::Instruction::Mov { dst, src } => {
-                let mut src = src.as_x86();
-                src.push(',');
-
-                let instr = self.format_two_operand_instruction("movl", &src, &dst.as_x86());
-                write!(out, "{}", instr)
-            }
-            asm_ast::Instruction::Unary { operator, operand } => {
-                let instr =
-                    self.format_one_operand_instruction(&operator.as_x86(), &operand.as_x86());
-
-                write!(out, "{}", instr)
-            }
-            asm_ast::Instruction::AllocateStack(size) => {
-                let src = format!("${size},");
-
-                let instr = self.format_two_operand_instruction("subq", &src, "%rsp");
-                write!(out, "{}", instr)
-            }
-
-            asm_ast::Instruction::Ret => {
-                let instr1 = self.format_two_operand_instruction("movq", "%rbp,", "%rsp");
-                let instr2 = self.format_one_operand_instruction("popq", "&rbp");
-                write!(out, "{}", instr1)?;
-                write!(out, "{}", instr2)?;
-                write!(out, "{}ret\n", self.indent)
-            }
-        }
-    }
-
-    fn format_one_operand_instruction(&self, operator: &str, operand: &str) -> String {
-        format!(
-            "{}{:<opcode_width$} {}\n",
-            self.indent,
-            operator,
-            operand,
-            opcode_width = self.opcode_width
-        )
-    }
-
-    fn format_two_operand_instruction(&self, operator: &str, op1: &str, op2: &str) -> String {
-        format!(
-            "{}{:<opcode_width$} {:<operand_width$} {}\n",
-            self.indent,
-            operator,
-            op1,
-            op2,
-            opcode_width = self.opcode_width,
-            operand_width = self.operand_width
-        )
     }
 }
