@@ -13,9 +13,18 @@ pub enum Instruction {
         src: Value,
         dst: Value,
     },
+    Copy {
+        src: Value,
+        dst: Value,
+    },
+    Jump(Identifier),
+    JumpIfZero(Value, Identifier),
+    JumpIfNotZero(Value, Identifier),
+    Label(Identifier),
     Ret(Value),
 }
 
+#[derive(Clone)]
 pub enum Value {
     Constant(i32),
     Var(Identifier),
@@ -33,11 +42,22 @@ impl fmt::Display for Value {
 // tacky binary operations
 #[derive(Debug)]
 pub enum BinaryOP {
+    // arithmatic
     Add,
     Sub,
     Mul,
     Div,
     Mod,
+    // logical
+    LogicalAnd,
+    LogicalOr,
+    // comparison
+    Equal,
+    NotEqual,
+    LessThan,
+    GreaterThan,
+    LessThanOrEq,
+    GreaterThanOrEq,
 }
 
 // tacky unary operations
@@ -45,35 +65,5 @@ pub enum BinaryOP {
 pub enum UnaryOP {
     Not,
     Neg,
-}
-
-// pretty print the instruction
-impl Instruction {
-    pub fn print(&self, indent: usize) {
-        match self {
-            Instruction::Ret(val) => {
-                println!("{}Ret({})", " ".repeat(indent), val);
-            }
-
-            Instruction::Unary { op, src, dst } => {
-                println!("{}{:?}(src: {}, dst: {})", " ".repeat(indent), op, src, dst);
-            }
-
-            Instruction::Binary {
-                op,
-                src1,
-                src2,
-                dst,
-            } => {
-                println!(
-                    "{}{:?}(src1: {}, src2: {}, dst: {})",
-                    " ".repeat(indent),
-                    op,
-                    src1,
-                    src2,
-                    dst
-                );
-            }
-        }
-    }
+    LogicalNot,
 }

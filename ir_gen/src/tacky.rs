@@ -10,6 +10,7 @@ pub struct FunctionDef {
     instructions: Vec<Instruction>,
 }
 
+#[derive(Clone)]
 pub struct Identifier(pub String);
 
 impl Program {
@@ -20,15 +21,6 @@ impl Program {
     pub fn into_parts(self) -> FunctionDef {
         self.function
     }
-
-    pub fn print(&self) {
-        self.print_with_indent(0);
-    }
-
-    fn print_with_indent(&self, indent: usize) {
-        println!("{}Program", " ".repeat(indent));
-        self.function.print_with_indent(indent + 2);
-    }
 }
 
 impl FunctionDef {
@@ -38,18 +30,5 @@ impl FunctionDef {
 
     pub fn into_parts(self) -> (Identifier, Vec<Instruction>) {
         (self.name, self.instructions)
-    }
-
-    fn print_with_indent(&self, indent: usize) {
-        println!("{}FunctionDef", " ".repeat(indent));
-        println!("{}name: {}", " ".repeat(indent + 2), self.name.0);
-        self.print_instructions(indent + 2);
-    }
-
-    fn print_instructions(&self, indent: usize) {
-        println!("{}Instructions:", " ".repeat(indent));
-        for instruction in &self.instructions {
-            instruction.print(indent + 2);
-        }
     }
 }

@@ -2,9 +2,10 @@ pub mod tacky;
 use parser::ast;
 
 mod gen_expressions;
+mod print_ir;
 
 pub struct IRgen {
-    var_count: usize, // counter to generate automatic variables
+    var_count: usize, // counter to generate automatic variables and labels
 }
 
 impl IRgen {
@@ -15,6 +16,13 @@ impl IRgen {
     // generate temporary variables
     fn make_temp_var(&mut self) -> String {
         let s = format!("tmp.{}", self.var_count);
+        self.var_count += 1;
+        s
+    }
+
+    // generate labels
+    fn make_label(&mut self) -> String {
+        let s = format!("label_{}", self.var_count);
         self.var_count += 1;
         s
     }
@@ -39,8 +47,9 @@ impl IRgen {
     ) {
         match statement {
             ast::Statement::Return(exp) => {
-                let value = tacky::Instruction::Ret(self.gen_expression(exp, instructions));
-                instructions.push(value);
+                let val = self.gen_expression(exp, instructions);
+                let instr = tacky::Instruction::Ret(val);
+                instructions.push(instr);
             }
         }
     }
