@@ -1,4 +1,4 @@
-use lexer::{Lexer, SpannedToken, token::Token};
+use lexer::{SpannedToken, token::Token};
 use parse_err::ParseErr;
 
 use crate::ast::Identifier;
@@ -9,82 +9,63 @@ mod print_ast;
 
 pub mod ast;
 
-pub struct Parser<'source> {
-    lexer: Lexer<'source>,
-    peeked_token: Option<SpannedToken<'source>>,
+pub struct Parser<'a> {
+    lexer: lexer::Lexer<'a>,
+    current_token: SpannedToken<'a>,
+    peeked_token: Option<SpannedToken<'a>>,
 }
 
-impl<'source> Parser<'source> {
-    // create a new parser instance, return an 'input is empty' error if there is no tokens
-    pub fn build(mut lexer: Lexer<'source>) -> Result<Self, ParseErr> {
-        let peeked_token = lexer.next().ok_or_else(|| {
-            ParseErr::new(String::from("input is empty"), lexer.get_file_name(), 0, 0)
-        })?;
-
+impl<'a> Parser<'a> {
+    /// create a new instance of parser
+    pub fn new(lexer: lexer::Lexer<'a>) -> Result<Self, ParseErr> {
         Ok(Self {
             lexer,
-            peeked_token: Some(peeked_token),
+            current_token: SpannedToken::default(),
+            peeked_token: None,
         })
     }
 
-    // report end on input errors
-    fn unexpected_eof(&self) -> ParseErr {
-        ParseErr::new(
-            "unexpected end of input".to_string(),
-            self.lexer.get_file_name(),
-            self.lexer.get_line_num(),
-            self.lexer.get_col_num(),
-        )
-    }
-
-    // advance the parser to the next token and return the current peeked token,
-    fn advance(&mut self) -> Result<SpannedToken<'source>, ParseErr> {
-        let token = self
-            .peeked_token
-            .take()
-            .ok_or_else(|| self.unexpected_eof())?;
-
-        if token.token_type == Token::Error {
-            return Err(ParseErr::new(
-                format!("invalid token: {}", token.lexeme),
-                token.file_name.to_string(),
-                token.line_num,
-                token.col_start,
-            ));
+    /// advance the parser to the next token and return the current token,
+    fn advance(&mut self) -> Result<&SpannedToken<'a>, ParseErr> {
+        match self.peeked_token.take() {
+            Some(token) => {
+                self.peeked_token = None;
+                self.current_token = token;
+                Ok(&self.current_token)
+            }
+            None => {
+                let token = self.lexer.next().ok_or_else(|| {
+                    ParseErr::new("unexpected end of input".to_string(), &self.current_token)
+                })?;
+                self.current_token = token;
+                Ok(&self.current_token)
+            }
         }
-
-        self.peeked_token = self.lexer.next();
-        Ok(token)
     }
 
-    // return the peeked token, return end of input stream error if there is no token
-    fn peek(&self) -> Result<&SpannedToken<'source>, ParseErr> {
-        self.peeked_token
-            .as_ref()
-            .ok_or_else(|| self.unexpected_eof())
+    /// return the peeked token
+    fn peek(&mut self) -> Result<&SpannedToken<'a>, ParseErr> {
+        // if there is something in peeked token, return it and leave it unchanged
+        if self.peeked_token.is_some() {
+            Ok(self.peeked_token.as_ref().unwrap())
+        } else {
+            // if it's empty, get the next token and return reference to it
+            self.peeked_token = self.lexer.next();
+            Ok(self
+                .peeked_token
+                .as_ref()
+                .ok_or_else(|| ParseErr::new("end of input".to_string(), &self.current_token))?)
+        }
     }
 
-    // compare the next_token with the expected token type
-    // return error If they don't match, the lexeme parameter is used for error logging
+    /// compare the next token with the expected token type,
+    /// return error If they don't match, the lexeme parameter is used for error logging
     fn expect_token_type(&mut self, expected: Token, lexeme: &'static str) -> Result<(), ParseErr> {
-        match self.advance() {
-            Ok(token) => {
-                if token.token_type != expected {
-                    Err(ParseErr::expected_found(lexeme, &token))
-                } else {
-                    Ok(())
-                }
-            }
-            Err(_) => {
-                // When advance fails, return the expected-token error
-                // as the expexted token might be the last token, and eof error would be incorrect
-                Err(ParseErr::expected(
-                    format!("{:?}", expected),
-                    self.lexer.get_file_name(),
-                    self.lexer.get_line_num(),
-                    self.lexer.get_col_num(),
-                ))
-            }
+        let token = self.advance()?;
+        if token.get_token() != expected {
+            Err(ParseErr::expected_found(lexeme, token))
+        } else {
+            Ok(())
         }
     }
 
@@ -92,7 +73,7 @@ impl<'source> Parser<'source> {
     pub fn parse_program(&mut self) -> Result<ast::Program, ParseErr> {
         let program = ast::Program::new(self.parse_function()?);
 
-        if let Ok(tok) = self.peek() {
+        if let Ok(tok) = self.advance() {
             Err(ParseErr::expected_found("end of input", tok))
         } else {
             Ok(program)
@@ -120,8 +101,8 @@ impl<'source> Parser<'source> {
     fn parse_identifier(&mut self) -> Result<Identifier, ParseErr> {
         let token = self.advance()?;
 
-        if token.token_type == Token::Identifier {
-            Ok(ast::Identifier(token.lexeme.to_string()))
+        if token.get_token() == Token::Identifier {
+            Ok(ast::Identifier(token.get_lexeme().to_string()))
         } else {
             Err(ParseErr::expected_found("identifier", &token))
         }
