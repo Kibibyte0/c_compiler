@@ -24,7 +24,8 @@ impl Token {
             | Token::LessThan
             | Token::GreaterThan
             | Token::LessThanOrEq
-            | Token::GreaterThanOrEq => true,
+            | Token::GreaterThanOrEq
+            | Token::Assignment => true,
             _ => false,
         }
     }
@@ -39,6 +40,7 @@ impl Token {
             Token::Equal | Token::NotEqual => 30,
             Token::LogicalAnd => 10,
             Token::LogicalOr => 5,
+            Token::Assignment => 1,
             _ => 0,
         }
     }

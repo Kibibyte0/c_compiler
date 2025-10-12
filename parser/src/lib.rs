@@ -1,11 +1,11 @@
 use lexer::{SpannedToken, token::Token};
 use parse_err::ParseErr;
 
-use crate::ast::Identifier;
+use crate::ast::{BlockItem, Declaration, FunctionDef, Identifier, Program, Spanned, Statement};
 
 mod parse_err;
 mod parse_expressions;
-mod print_ast;
+pub mod print_ast;
 
 pub mod ast;
 
@@ -59,59 +59,118 @@ impl<'a> Parser<'a> {
     }
 
     /// compare the next token with the expected token type,
-    /// return error If they don't match, the lexeme parameter is used for error logging
-    fn expect_token_type(&mut self, expected: Token, lexeme: &'static str) -> Result<(), ParseErr> {
-        let token = self.advance()?;
-        if token.get_token() != expected {
-            Err(ParseErr::expected_found(lexeme, token))
+    /// return error If they don't match
+    fn expect_token(&mut self, expected: &'static str) -> Result<(), ParseErr> {
+        let token = self.peek()?;
+        if token.get_lexeme() != expected {
+            Err(ParseErr::expected(expected, &self.current_token))
         } else {
+            self.advance()?; // consume token
             Ok(())
         }
     }
 
+    /// warp parser node in spanned struct
+    fn spanned<T>(
+        &mut self,
+        parse_fn: impl FnOnce(&mut Self) -> Result<T, ParseErr>,
+    ) -> Result<Spanned<T>, ParseErr> {
+        let start = self.peek()?.get_span().start;
+        let result = parse_fn(self)?;
+        let end = self.current_token.get_span().end;
+        Ok(Spanned::new(result, start..end))
+    }
+
+    pub fn parse(&mut self) -> Result<Spanned<Program>, ParseErr> {
+        self.spanned(|this| this.parse_program())
+    }
+
     // entry point for the parser
-    pub fn parse_program(&mut self) -> Result<ast::Program, ParseErr> {
-        let program = ast::Program::new(self.parse_function()?);
+    fn parse_program(&mut self) -> Result<ast::Program, ParseErr> {
+        let function = self.spanned(|this| this.parse_function())?;
+        let program = ast::Program::new(function);
 
         if let Ok(tok) = self.advance() {
-            Err(ParseErr::expected_found("end of input", tok))
+            Err(ParseErr::expected("end of input", tok))
         } else {
             Ok(program)
         }
     }
 
     fn parse_function(&mut self) -> Result<ast::FunctionDef, ParseErr> {
-        self.expect_token_type(Token::Int, "int")?;
+        self.expect_token("int")?;
 
-        let name = self.parse_identifier()?;
+        let name = self.spanned(|this| this.parse_identifier())?;
 
-        self.expect_token_type(Token::LeftParenthesis, "(")?;
-        self.expect_token_type(Token::Void, "void")?;
-        self.expect_token_type(Token::RightParenthesis, ")")?;
+        self.expect_token("(")?;
+        self.expect_token("void")?;
+        self.expect_token(")")?;
 
-        self.expect_token_type(Token::LeftCurlyBracket, "{")?;
+        self.expect_token("{")?;
 
-        let body = self.parse_statement()?;
+        let mut function_body = Vec::new();
+        while self.peek()?.get_token() != Token::RightCurlyBracket {
+            let block_item = self.spanned(|this| this.parse_block_item())?;
+            function_body.push(block_item);
+        }
+        self.advance()?; // consume the '}' token
+        Ok(FunctionDef::new(name, function_body))
+    }
 
-        self.expect_token_type(Token::RightCurlyBracket, "}")?;
+    fn parse_block_item(&mut self) -> Result<BlockItem, ParseErr> {
+        let next_token = self.peek()?;
+        match next_token.get_token() {
+            Token::Int => Ok(BlockItem::D(self.spanned(|this| this.parse_declaration())?)),
+            _ => Ok(BlockItem::S(self.spanned(|this| this.parse_statement())?)),
+        }
+    }
 
-        Ok(ast::FunctionDef::new(name, body))
+    fn parse_statement(&mut self) -> Result<Statement, ParseErr> {
+        let next_token = self.peek()?.get_token();
+        match next_token {
+            Token::Return => self.parse_return_statement(),
+            Token::Semicolon => {
+                self.advance()?; // consume the ';' token
+                Ok(Statement::Null)
+            }
+            _ => {
+                let exp = self.parse_expression(0)?;
+                self.expect_token(";")?;
+                Ok(Statement::ExprStatement(exp))
+            }
+        }
+    }
+
+    fn parse_declaration(&mut self) -> Result<ast::Declaration, ParseErr> {
+        self.expect_token("int")?;
+        let name = self.spanned(|this| this.parse_identifier())?;
+
+        let init = if self.peek()?.get_token() == Token::Assignment {
+            self.advance()?; // consume the '=' token
+            Some(self.parse_expression(0)?)
+        } else {
+            None
+        };
+
+        self.expect_token(";")?;
+
+        Ok(Declaration::new(name, init))
+    }
+
+    fn parse_return_statement(&mut self) -> Result<Statement, ParseErr> {
+        self.expect_token("return")?;
+        let exp = self.parse_expression(0)?;
+        self.expect_token(";")?;
+        Ok(Statement::Return(exp))
     }
 
     fn parse_identifier(&mut self) -> Result<Identifier, ParseErr> {
         let token = self.advance()?;
 
         if token.get_token() == Token::Identifier {
-            Ok(ast::Identifier(token.get_lexeme().to_string()))
+            Ok(Identifier::new(token.get_lexeme().to_string()))
         } else {
-            Err(ParseErr::expected_found("identifier", &token))
+            Err(ParseErr::expected("identifier", &token))
         }
-    }
-
-    fn parse_statement(&mut self) -> Result<ast::Statement, ParseErr> {
-        self.expect_token_type(Token::Return, "return")?;
-        let exp = self.parse_expression(0)?;
-        self.expect_token_type(Token::Semicolon, ";")?;
-        Ok(ast::Statement::Return(exp))
     }
 }

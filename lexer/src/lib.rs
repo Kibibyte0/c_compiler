@@ -54,6 +54,24 @@ impl<'a> SpannedToken<'a> {
     pub fn get_file_name(&self) -> String {
         self.file_name.to_string()
     }
+
+    pub fn calculate_token_pos(&self) -> Option<(usize, usize)> {
+        if self.span.end > self.source_code.len() {
+            return None;
+        }
+
+        let mut line_number = 1;
+        let mut last_line_end = 0;
+
+        for (i, c) in self.source_code[..self.span.end].char_indices() {
+            if c == '\n' {
+                line_number += 1;
+                last_line_end = i + 1;
+            }
+        }
+
+        Some((line_number, self.span.end - last_line_end + 1))
+    }
 }
 
 pub struct Lexer<'a> {

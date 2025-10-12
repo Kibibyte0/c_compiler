@@ -1,13 +1,21 @@
+use crate::ast::{Identifier, Spanned};
+
+#[derive(Debug)]
 pub enum Expression {
     Constant(i32),
     Unary {
         operator: UnaryOP,
-        operand: Box<Expression>,
+        operand: Box<Spanned<Expression>>,
     },
     Binary {
         operator: BinaryOP,
-        operand1: Box<Expression>,
-        operand2: Box<Expression>,
+        operand1: Box<Spanned<Expression>>,
+        operand2: Box<Spanned<Expression>>,
+    },
+    Var(Spanned<Identifier>),
+    Assignment {
+        lvalue: Box<Spanned<Expression>>,
+        rvalue: Box<Spanned<Expression>>,
     },
 }
 

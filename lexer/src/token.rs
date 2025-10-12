@@ -31,6 +31,8 @@ pub enum Token {
     //
     // Operators
     //
+    #[token("=")]
+    Assignment,
 
     // Arithmatic operators
     #[token("-")]
