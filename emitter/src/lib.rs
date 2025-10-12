@@ -1,7 +1,6 @@
 use codegen::asm;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
 
 mod write_instructions;
 
@@ -25,7 +24,7 @@ impl Emitter {
     pub fn write_program(
         &self,
         program: asm::Program,
-        output_file_path: PathBuf,
+        output_file_path: String,
     ) -> std::io::Result<()> {
         let mut file = File::create(output_file_path)?;
         let mut code = String::new();

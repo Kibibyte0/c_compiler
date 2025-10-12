@@ -7,6 +7,7 @@ edition = "2024"
 clap = { version = "4", features = ["derive"] }
 lexer = { path = "../lexer" }
 parser = { path = "../parser" }
+semantic_analysis = { path = "../semantic_analysis" }
 codegen = { path = "../codegen" }
 emitter = { path = "../emitter" }
 ir_gen = { path = "../ir_gen" }
