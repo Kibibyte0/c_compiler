@@ -1,56 +1,105 @@
 pub mod tacky;
-use parser::ast;
+use parser::ast::{self, Spanned};
 
 mod gen_expressions;
 mod print_ir;
 
 pub struct IRgen {
-    var_count: usize, // counter to generate automatic variables and labels
+    var_counter: usize, // counter to generate automatic variables and labels
 }
 
 impl IRgen {
-    pub fn new() -> Self {
-        Self { var_count: 0 }
+    pub fn new(var_counter: usize) -> Self {
+        Self { var_counter }
     }
 
     // generate temporary variables
     fn make_temp_var(&mut self) -> String {
-        let s = format!("tmp.{}", self.var_count);
-        self.var_count += 1;
+        let s = format!("tmp.{}", self.var_counter);
+        self.var_counter += 1;
         s
     }
 
     // generate labels
     fn make_label(&mut self) -> String {
-        let s = format!("label_{}", self.var_count);
-        self.var_count += 1;
+        let s = format!("label_{}", self.var_counter);
+        self.var_counter += 1;
         s
     }
 
-    pub fn gen_tacky(&mut self, program: ast::Program) -> tacky::Program {
-        let function = program.into_parts();
-        tacky::Program::new(self.gen_function_def(function))
+    pub fn gen_tacky(&mut self, sp_program: Spanned<ast::Program>) -> tacky::Program {
+        let sp_function = sp_program.discard_sp().into_parts();
+        tacky::Program::new(self.gen_function_def(sp_function))
     }
 
-    fn gen_function_def(&mut self, function: ast::FunctionDef) -> tacky::FunctionDef {
-        let (name, body) = function.into_parts();
+    fn gen_function_def(&mut self, sp_function: Spanned<ast::FunctionDef>) -> tacky::FunctionDef {
+        let (sp_name, body) = sp_function.discard_sp().into_parts();
         let mut instructions: Vec<tacky::Instruction> = Vec::new();
-        self.gen_statements(body, &mut instructions);
+        self.gen_function_body(body, &mut instructions);
 
-        tacky::FunctionDef::new(tacky::Identifier(name.0), instructions)
+        tacky::FunctionDef::new(Self::convert_identifier(sp_name), instructions)
+    }
+
+    fn gen_function_body(
+        &mut self,
+        body: Vec<Spanned<ast::BlockItem>>,
+        instructions: &mut Vec<tacky::Instruction>,
+    ) {
+        for sp_item in body {
+            self.gen_block_item(sp_item, instructions);
+        }
+    }
+
+    fn gen_block_item(
+        &mut self,
+        sp_item: Spanned<ast::BlockItem>,
+        instructions: &mut Vec<tacky::Instruction>,
+    ) {
+        match sp_item.discard_sp() {
+            ast::BlockItem::D(sp_decl) => self.gen_declaration(sp_decl, instructions),
+            ast::BlockItem::S(sp_stmt) => self.gen_statements(sp_stmt, instructions),
+        }
+    }
+
+    fn gen_declaration(
+        &mut self,
+        sp_decl: Spanned<ast::Declaration>,
+        instructions: &mut Vec<tacky::Instruction>,
+    ) {
+        let decl = sp_decl.discard_sp();
+        let (sp_name, sp_init) = decl.into_parts();
+        match sp_init {
+            Some(sp_init) => {
+                let value = self.gen_expression(sp_init, instructions);
+                let instr = tacky::Instruction::Copy {
+                    src: value,
+                    dst: tacky::Value::Var(Self::convert_identifier(sp_name)),
+                };
+                instructions.push(instr);
+            }
+            None => return,
+        }
     }
 
     fn gen_statements(
         &mut self,
-        statement: ast::Statement,
+        sp_stmt: Spanned<ast::Statement>,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
-        match statement {
-            ast::Statement::Return(exp) => {
-                let val = self.gen_expression(exp, instructions);
+        match sp_stmt.discard_sp() {
+            ast::Statement::Return(sp_exp) => {
+                let val = self.gen_expression(sp_exp, instructions);
                 let instr = tacky::Instruction::Ret(val);
                 instructions.push(instr);
             }
+            ast::Statement::ExprStatement(sp_exp) => {
+                self.gen_expression(sp_exp, instructions);
+            }
+            ast::Statement::Null => return,
         }
+    }
+
+    fn convert_identifier(sp_name: Spanned<ast::Identifier>) -> tacky::Identifier {
+        tacky::Identifier(sp_name.discard_sp().into_parts())
     }
 }

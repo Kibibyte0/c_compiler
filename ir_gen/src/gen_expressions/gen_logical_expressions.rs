@@ -1,13 +1,13 @@
 use crate::IRgen;
 use crate::tacky;
-use parser::ast;
+use parser::ast::{self, Spanned};
 
 impl IRgen {
     pub(super) fn gen_logical_expr(
         &mut self,
         operator: ast::BinaryOP,
-        operand1: ast::Expression,
-        operand2: ast::Expression,
+        operand1: Spanned<ast::Expression>,
+        operand2: Spanned<ast::Expression>,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         match operator {
@@ -19,8 +19,8 @@ impl IRgen {
 
     fn gen_logical_and(
         &mut self,
-        operand1: ast::Expression,
-        operand2: ast::Expression,
+        operand1: Spanned<ast::Expression>,
+        operand2: Spanned<ast::Expression>,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         let result_var = tacky::Value::Var(tacky::Identifier(self.make_temp_var()));
@@ -73,8 +73,8 @@ impl IRgen {
 
     fn gen_logical_or(
         &mut self,
-        operand1: ast::Expression,
-        operand2: ast::Expression,
+        operand1: Spanned<ast::Expression>,
+        operand2: Spanned<ast::Expression>,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         let result_var = tacky::Value::Var(tacky::Identifier(self.make_temp_var()));

@@ -1,15 +1,16 @@
 use crate::IRgen;
 use crate::tacky;
-use parser::ast;
+use parser::ast::{self, Spanned};
 
 mod gen_logical_expressions;
 
 impl IRgen {
     pub(crate) fn gen_expression(
         &mut self,
-        exp: ast::Expression,
+        sp_exp: Spanned<ast::Expression>,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
+        let exp = sp_exp.discard_sp();
         match exp {
             ast::Expression::Constant(int) => tacky::Value::Constant(int),
 
@@ -22,6 +23,10 @@ impl IRgen {
                 operand1,
                 operand2,
             } => self.gen_binary_expr(operator, *operand1, *operand2, instructions),
+            ast::Expression::Var(sp_name) => tacky::Value::Var(Self::convert_identifier(sp_name)),
+            ast::Expression::Assignment { lvalue, rvalue } => {
+                self.gen_assignment(*lvalue, *rvalue, instructions)
+            }
         }
     }
 
@@ -29,8 +34,8 @@ impl IRgen {
     fn gen_binary_expr(
         &mut self,
         operator: ast::BinaryOP,
-        operand1: ast::Expression,
-        operand2: ast::Expression,
+        operand1: Spanned<ast::Expression>,
+        operand2: Spanned<ast::Expression>,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         use ast::BinaryOP;
@@ -60,7 +65,7 @@ impl IRgen {
     fn gen_unary_expr(
         &mut self,
         operator: ast::UnaryOP,
-        operand: ast::Expression,
+        operand: Spanned<ast::Expression>,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         let src = self.gen_expression(operand, instructions);
@@ -73,6 +78,22 @@ impl IRgen {
             dst,
         });
         tacky::Value::Var(tacky::Identifier(dst_name))
+    }
+
+    fn gen_assignment(
+        &mut self,
+        lvalue: Spanned<ast::Expression>,
+        rvalue: Spanned<ast::Expression>,
+        instructions: &mut Vec<tacky::Instruction>,
+    ) -> tacky::Value {
+        let lval = self.gen_expression(lvalue, instructions);
+        let rval = self.gen_expression(rvalue, instructions);
+        let instr = tacky::Instruction::Copy {
+            src: rval.clone(),
+            dst: lval,
+        };
+        instructions.push(instr);
+        rval
     }
 
     fn convert_binary_op(op: ast::BinaryOP) -> tacky::BinaryOP {
