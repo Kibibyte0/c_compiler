@@ -28,6 +28,12 @@ pub enum Token {
     #[token("void")]
     Void,
 
+    #[token("else")]
+    Else,
+
+    #[token("if")]
+    If,
+
     //
     // Operators
     //
@@ -103,6 +109,12 @@ pub enum Token {
 
     #[token(";")]
     Semicolon,
+
+    #[token(":")]
+    Colon,
+
+    #[token("?")]
+    QuestionMark,
 
     // skipped patterns
     #[regex(r"\n")]

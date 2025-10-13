@@ -12,6 +12,11 @@ pub enum Expression {
         operand1: Box<Spanned<Expression>>,
         operand2: Box<Spanned<Expression>>,
     },
+    Conditional {
+        cond: Box<Spanned<Expression>>,
+        cons: Box<Spanned<Expression>>,
+        alt: Box<Spanned<Expression>>,
+    },
     Var(Spanned<Identifier>),
     Assignment {
         lvalue: Box<Spanned<Expression>>,

@@ -2,6 +2,7 @@ use crate::VariableResolver;
 use crate::semantic_error::{ErrorType, SemanticErr};
 use parser::ast::*;
 use std::collections::HashMap;
+use std::ops::Range;
 
 mod resolve_expressions;
 
@@ -123,7 +124,39 @@ impl<'a> VariableResolver<'a> {
                 let exp = self.resolve_expression(exp, ctx)?;
                 Ok(Spanned::new(Statement::ExprStatement(exp), span))
             }
+            Statement::IfStatement {
+                condition,
+                if_clause,
+                else_clause,
+            } => self.resolve_if_statement(condition, *if_clause, else_clause, span, ctx),
             Statement::Null => Ok(Spanned::new(Statement::Null, span)),
         }
+    }
+
+    fn resolve_if_statement(
+        &mut self,
+        condition: Spanned<Expression>,
+        if_clause: Spanned<Statement>,
+        else_clause: Option<Box<Spanned<Statement>>>,
+        span: Range<usize>,
+        ctx: &mut ResolverContext,
+    ) -> Result<Spanned<Statement>, ErrorType> {
+        let condition = self.resolve_expression(condition, ctx)?;
+        let if_clause = Box::new(self.resolve_statement(if_clause, ctx)?);
+
+        let else_clause = if let Some(clause) = else_clause {
+            Some(Box::new(self.resolve_statement(*clause, ctx)?))
+        } else {
+            None
+        };
+
+        Ok(Spanned::new(
+            Statement::IfStatement {
+                condition,
+                if_clause,
+                else_clause,
+            },
+            span,
+        ))
     }
 }

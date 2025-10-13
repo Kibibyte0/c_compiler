@@ -17,29 +17,13 @@ impl<'source> Parser<'source> {
         let mut next_token = self.peek()?.get_token();
         while next_token.is_binary() && next_token.precedence() >= min_prec {
             if next_token == Token::Assignment {
-                self.advance()?; // consume the '=' token
-                let right = self.parse_expression(next_token.precedence())?;
-                let span_end = self.current_token.get_span().end;
-                left = Spanned::new(
-                    Expression::Assignment {
-                        lvalue: Box::new(left),
-                        rvalue: Box::new(right),
-                    },
-                    span_start..span_end,
-                );
+                left = self.parse_assignment(left, next_token.precedence(), span_start)?;
+                span_start = self.peek()?.get_span().start;
+            } else if next_token == Token::QuestionMark {
+                left = self.parse_conditional(left, next_token.precedence(), span_start)?;
                 span_start = self.peek()?.get_span().start;
             } else {
-                let op = self.parse_binary_op()?;
-                let right = self.parse_expression(next_token.precedence() + 1)?;
-                let span_end = self.current_token.get_span().end;
-                left = Spanned::new(
-                    Expression::Binary {
-                        operator: op,
-                        operand1: Box::new(left),
-                        operand2: Box::new(right),
-                    },
-                    span_start..span_end,
-                );
+                left = self.parse_binary(left, next_token.precedence(), span_start)?;
                 span_start = self.peek()?.get_span().start;
             }
             next_token = self.peek()?.get_token();
@@ -77,6 +61,73 @@ impl<'source> Parser<'source> {
         } else {
             Err(ParseErr::new(String::from("invald expression"), next_token))
         }
+    }
+
+    fn parse_assignment(
+        &mut self,
+        left: Spanned<Expression>,
+        token_precedence: usize,
+        span_start: usize,
+    ) -> Result<Spanned<Expression>, ParseErr> {
+        self.advance()?; // consume the '=' token
+        let right = self.parse_expression(token_precedence)?;
+        let span_end = self.current_token.get_span().end;
+        let expr = Spanned::new(
+            Expression::Assignment {
+                lvalue: Box::new(left),
+                rvalue: Box::new(right),
+            },
+            span_start..span_end,
+        );
+        Ok(expr)
+    }
+
+    fn parse_conditional(
+        &mut self,
+        left: Spanned<Expression>,
+        token_precedence: usize,
+        span_start: usize,
+    ) -> Result<Spanned<Expression>, ParseErr> {
+        let middle = self.parse_conditional_middle()?;
+        let right = self.parse_expression(token_precedence)?;
+        let span_end = self.current_token.get_span().end;
+        let expr = Spanned::new(
+            Expression::Conditional {
+                cond: Box::new(left),
+                cons: Box::new(middle),
+                alt: Box::new(right),
+            },
+            span_start..span_end,
+        );
+        Ok(expr)
+    }
+
+    // parse the middle expression of the ternary operator
+    fn parse_conditional_middle(&mut self) -> Result<Spanned<Expression>, ParseErr> {
+        self.advance()?; // consume the '?' token
+        let exp = self.parse_expression(0)?;
+        self.expect_token(":")?;
+        Ok(exp)
+    }
+
+    fn parse_binary(
+        &mut self,
+        left: Spanned<Expression>,
+        token_precedence: usize,
+        span_start: usize,
+    ) -> Result<Spanned<Expression>, ParseErr> {
+        let op = self.parse_binary_op()?;
+        let right = self.parse_expression(token_precedence + 1)?;
+        let span_end = self.current_token.get_span().end;
+        let expr = Spanned::new(
+            Expression::Binary {
+                operator: op,
+                operand1: Box::new(left),
+                operand2: Box::new(right),
+            },
+            span_start..span_end,
+        );
+        Ok(expr)
     }
 
     // parse a binary operator

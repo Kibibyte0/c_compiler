@@ -1,5 +1,6 @@
 use crate::IRgen;
 use crate::tacky;
+use parser::ast::Expression;
 use parser::ast::{self, Spanned};
 
 mod gen_logical_expressions;
@@ -27,6 +28,9 @@ impl IRgen {
             ast::Expression::Assignment { lvalue, rvalue } => {
                 self.gen_assignment(*lvalue, *rvalue, instructions)
             }
+            ast::Expression::Conditional { cond, cons, alt } => {
+                self.gen_conditional(*cond, *cons, *alt, instructions)
+            }
         }
     }
 
@@ -47,16 +51,15 @@ impl IRgen {
             _ => {
                 let src1 = self.gen_expression(operand1, instructions);
                 let src2 = self.gen_expression(operand2, instructions);
-                let dst_name = self.make_temp_var();
-                let dst = tacky::Value::Var(tacky::Identifier(dst_name.clone()));
+                let dst = self.make_temp_var();
                 let tacky_op = IRgen::convert_binary_op(operator);
                 instructions.push(tacky::Instruction::Binary {
                     op: tacky_op,
                     src1,
                     src2,
-                    dst,
+                    dst: dst.clone(),
                 });
-                tacky::Value::Var(tacky::Identifier(dst_name))
+                dst
             }
         }
     }
@@ -69,15 +72,14 @@ impl IRgen {
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         let src = self.gen_expression(operand, instructions);
-        let dst_name = self.make_temp_var();
-        let dst = tacky::Value::Var(tacky::Identifier(dst_name.clone()));
+        let dst = self.make_temp_var();
         let tacky_op = IRgen::convert_unary_op(operator);
         instructions.push(tacky::Instruction::Unary {
             op: tacky_op,
             src,
-            dst,
+            dst: dst.clone(),
         });
-        tacky::Value::Var(tacky::Identifier(dst_name))
+        dst
     }
 
     fn gen_assignment(
@@ -94,6 +96,44 @@ impl IRgen {
         };
         instructions.push(instr);
         rval
+    }
+
+    // instruction for generating ternary expressions
+    fn gen_conditional(
+        &mut self,
+        cond: Spanned<Expression>,
+        cons: Spanned<Expression>,
+        alt: Spanned<Expression>,
+        instructions: &mut Vec<tacky::Instruction>,
+    ) -> tacky::Value {
+        let result_var = self.make_temp_var();
+        let e2_label = self.make_label();
+        let end_label = self.make_label();
+
+        let cond_result = self.gen_expression(cond, instructions);
+        instructions.push(tacky::Instruction::JumpIfZero(
+            cond_result,
+            e2_label.clone(),
+        ));
+
+        let value1 = self.gen_expression(cons, instructions);
+        instructions.push(tacky::Instruction::Copy {
+            src: value1,
+            dst: result_var.clone(),
+        });
+
+        instructions.push(tacky::Instruction::Jump(end_label.clone()));
+
+        instructions.push(tacky::Instruction::Label(e2_label));
+
+        let value2 = self.gen_expression(alt, instructions);
+        instructions.push(tacky::Instruction::Copy {
+            src: value2,
+            dst: result_var.clone(),
+        });
+
+        instructions.push(tacky::Instruction::Label(end_label));
+        result_var
     }
 
     fn convert_binary_op(op: ast::BinaryOP) -> tacky::BinaryOP {

@@ -133,6 +133,7 @@ impl<'a> Parser<'a> {
                 self.advance()?; // consume the ';' token
                 Ok(Statement::Null)
             }
+            Token::If => self.parse_if_statement(),
             _ => {
                 let exp = self.parse_expression(0)?;
                 self.expect_token(";")?;
@@ -141,7 +142,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_declaration(&mut self) -> Result<ast::Declaration, ParseErr> {
+    fn parse_declaration(&mut self) -> Result<Declaration, ParseErr> {
         self.expect_token("int")?;
         let name = self.spanned(|this| this.parse_identifier())?;
 
@@ -158,10 +159,34 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_return_statement(&mut self) -> Result<Statement, ParseErr> {
-        self.expect_token("return")?;
+        self.advance()?; // consume the 'return' token
         let exp = self.parse_expression(0)?;
         self.expect_token(";")?;
         Ok(Statement::Return(exp))
+    }
+
+    fn parse_if_statement(&mut self) -> Result<Statement, ParseErr> {
+        self.advance()?; // consume the 'if' token
+
+        self.expect_token("(")?;
+        let condition = self.parse_expression(0)?;
+        self.expect_token(")")?;
+
+        let if_clause = Box::new(self.spanned(|this| this.parse_statement())?);
+
+        let else_clause = match self.peek()?.get_token() {
+            Token::Else => {
+                self.advance()?; // consume the 'else' token
+                Some(Box::new(self.spanned(|this| this.parse_statement())?))
+            }
+            _ => None,
+        };
+
+        Ok(Statement::IfStatement {
+            condition,
+            if_clause,
+            else_clause,
+        })
     }
 
     fn parse_identifier(&mut self) -> Result<Identifier, ParseErr> {

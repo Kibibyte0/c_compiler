@@ -25,6 +25,9 @@ impl<'a> VariableResolver<'a> {
                 self.resolve_unary(operator, *operand, span, ctx)
             }
             Expression::Constant(int) => Ok(Spanned::new(Expression::Constant(int), span)),
+            Expression::Conditional { cond, cons, alt } => {
+                self.resolve_condtional(*cond, *cons, *alt, span, ctx)
+            }
         }
     }
 
@@ -101,6 +104,24 @@ impl<'a> VariableResolver<'a> {
                 operator,
                 operand: Box::new(self.resolve_expression(operand, ctx)?),
             },
+            span,
+        ))
+    }
+
+    fn resolve_condtional(
+        &mut self,
+        cond: Spanned<Expression>,
+        cons: Spanned<Expression>,
+        alt: Spanned<Expression>,
+        span: Range<usize>,
+        ctx: &mut ResolverContext,
+    ) -> Result<Spanned<Expression>, ErrorType> {
+        let cond = Box::new(self.resolve_expression(cond, ctx)?);
+        let cons = Box::new(self.resolve_expression(cons, ctx)?);
+        let alt = Box::new(self.resolve_expression(alt, ctx)?);
+
+        Ok(Spanned::new(
+            Expression::Conditional { cond, cons, alt },
             span,
         ))
     }

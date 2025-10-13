@@ -65,6 +65,34 @@ impl DebuggingPrinter {
             Statement::Null => {
                 println!("{}Null", indent);
             }
+            Statement::IfStatement {
+                condition,
+                if_clause,
+                else_clause,
+            } => {
+                println!("{}If", indent);
+                Self::print_if_statement(condition, *if_clause, else_clause, indent_level + 2);
+            }
+        }
+    }
+
+    fn print_if_statement(
+        condition: Spanned<Expression>,
+        if_clause: Spanned<Statement>,
+        else_clause: Option<Box<Spanned<Statement>>>,
+        indent_level: usize,
+    ) {
+        let indent = " ".repeat(indent_level);
+
+        println!("{}Condtion", indent);
+        Self::print_expr(condition, indent_level + 2);
+
+        println!("{}if_clause", indent);
+        Self::print_statement(if_clause, indent_level + 2);
+
+        if let Some(clause) = else_clause {
+            println!("{}else_clause", indent);
+            Self::print_statement(*clause, indent_level + 2);
         }
     }
 
@@ -99,6 +127,28 @@ impl DebuggingPrinter {
                 Self::print_expr(*lvalue, indent_level + 2);
                 Self::print_expr(*rvalue, indent_level + 2);
             }
+            Expression::Conditional { cond, cons, alt } => {
+                println!("{}Condtional", indent);
+                Self::print_conditional(*cond, *cons, *alt, indent_level + 2);
+            }
         }
+    }
+
+    fn print_conditional(
+        cond: Spanned<Expression>,
+        cons: Spanned<Expression>,
+        alt: Spanned<Expression>,
+        indent_level: usize,
+    ) {
+        let indent = " ".repeat(indent_level);
+
+        println!("{}Condition", indent);
+        Self::print_expr(cond, indent_level + 2);
+
+        println!("{}Consequence", indent);
+        Self::print_expr(cons, indent_level + 2);
+
+        println!("{}Alternative", indent);
+        Self::print_expr(alt, indent_level + 2);
     }
 }

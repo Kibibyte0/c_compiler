@@ -2,6 +2,7 @@ pub mod tacky;
 use parser::ast::{self, Spanned};
 
 mod gen_expressions;
+mod gen_statements;
 mod print_ir;
 
 pub struct IRgen {
@@ -14,17 +15,17 @@ impl IRgen {
     }
 
     // generate temporary variables
-    fn make_temp_var(&mut self) -> String {
+    fn make_temp_var(&mut self) -> tacky::Value {
         let s = format!("tmp.{}", self.var_counter);
         self.var_counter += 1;
-        s
+        tacky::Value::Var(tacky::Identifier(s))
     }
 
     // generate labels
-    fn make_label(&mut self) -> String {
+    fn make_label(&mut self) -> tacky::Identifier {
         let s = format!("label_{}", self.var_counter);
         self.var_counter += 1;
-        s
+        tacky::Identifier(s)
     }
 
     pub fn gen_tacky(&mut self, sp_program: Spanned<ast::Program>) -> tacky::Program {
@@ -78,24 +79,6 @@ impl IRgen {
                 instructions.push(instr);
             }
             None => return,
-        }
-    }
-
-    fn gen_statements(
-        &mut self,
-        sp_stmt: Spanned<ast::Statement>,
-        instructions: &mut Vec<tacky::Instruction>,
-    ) {
-        match sp_stmt.discard_sp() {
-            ast::Statement::Return(sp_exp) => {
-                let val = self.gen_expression(sp_exp, instructions);
-                let instr = tacky::Instruction::Ret(val);
-                instructions.push(instr);
-            }
-            ast::Statement::ExprStatement(sp_exp) => {
-                self.gen_expression(sp_exp, instructions);
-            }
-            ast::Statement::Null => return,
         }
     }
 

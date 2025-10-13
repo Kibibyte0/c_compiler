@@ -73,6 +73,11 @@ pub struct Declaration {
 pub enum Statement {
     Return(Spanned<Expression>),
     ExprStatement(Spanned<Expression>),
+    IfStatement {
+        condition: Spanned<Expression>,
+        if_clause: Box<Spanned<Statement>>,
+        else_clause: Option<Box<Spanned<Statement>>>,
+    },
     Null,
 }
 
