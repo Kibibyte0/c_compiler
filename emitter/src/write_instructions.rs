@@ -22,7 +22,7 @@ impl Emitter {
             }
             asm::Instruction::Idiv(src) => self.write_div_instruction(src, out),
             asm::Instruction::Cdq => self.write_cdq_instruction(out),
-            asm::Instruction::Cmp(src1, src2) => self.write_cmp_instruction(src1, src2, out),
+            asm::Instruction::Cmp { src, dst } => self.write_cmp_instruction(src, dst, out),
             asm::Instruction::Jmp(label) => self.write_jmp_instruction(label, out),
             asm::Instruction::JmpCC(cond, label) => self.write_jmpcc_instruction(cond, label, out),
             asm::Instruction::SetCC(cond, dst) => self.write_setcc_instruction(cond, dst, out),

@@ -39,9 +39,9 @@ impl RegisterAllocation {
                 self.to_stack(src);
             }
 
-            asm::Instruction::Cmp(src1, src2) => {
-                self.to_stack(src1);
-                self.to_stack(src2);
+            asm::Instruction::Cmp { src, dst } => {
+                self.to_stack(src);
+                self.to_stack(dst);
             }
 
             asm::Instruction::SetCC(_, src) => {

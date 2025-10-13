@@ -16,7 +16,10 @@ pub enum Instruction {
         src: Operand,
         dst: Operand,
     },
-    Cmp(Operand, Operand),
+    Cmp {
+        src: Operand,
+        dst: Operand,
+    },
     Idiv(Operand),
     Cdq,
     Jmp(Identifier),

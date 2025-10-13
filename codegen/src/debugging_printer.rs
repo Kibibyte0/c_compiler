@@ -36,7 +36,7 @@ impl DebuggingPrinter {
                     indent, op, src, dst
                 );
             }
-            asm::Instruction::Cmp(src, dst) => {
+            asm::Instruction::Cmp { src, dst } => {
                 println!("{}Cmp(src: {:?}, dst: {:?})", indent, src, dst);
             }
             asm::Instruction::Idiv(src) => {

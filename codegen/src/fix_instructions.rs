@@ -29,7 +29,7 @@ impl InstructionFix {
 
         match instr {
             Mov { src, dst } => Self::fix_mov(src, dst, new_instructions),
-            Cmp(src1, src2) => Self::fix_cmp(src1, src2, new_instructions),
+            Cmp { src, dst } => Self::fix_cmp(src, dst, new_instructions),
             Binary { op, src, dst } => match op {
                 asm::BinaryOP::Add | asm::BinaryOP::Sub => {
                     Self::fix_add_sub(op, src, dst, new_instructions)
@@ -140,29 +140,29 @@ impl InstructionFix {
     // and they might have an immediate as the second operand, both of which are invalid
     // return true if a fix up happens
     fn fix_cmp(
-        src1: &asm::Operand,
-        src2: &asm::Operand,
+        src: &asm::Operand,
+        dst: &asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_stack(src1) && Self::is_stack(src2) {
+        if Self::is_stack(src) && Self::is_stack(dst) {
             new_instructions.push(asm::Instruction::Mov {
-                src: src1.clone(),
+                src: src.clone(),
                 dst: asm::Operand::Reg(asm::Register::R10),
             });
-            new_instructions.push(asm::Instruction::Cmp(
-                asm::Operand::Reg(Register::R10),
-                src2.clone(),
-            ));
+            new_instructions.push(asm::Instruction::Cmp {
+                src: asm::Operand::Reg(Register::R10),
+                dst: dst.clone(),
+            });
             true
-        } else if Self::is_immediate(src2) {
+        } else if Self::is_immediate(dst) {
             new_instructions.push(asm::Instruction::Mov {
-                src: src2.clone(),
+                src: dst.clone(),
                 dst: asm::Operand::Reg(asm::Register::R11),
             });
-            new_instructions.push(asm::Instruction::Cmp(
-                src1.clone(),
-                asm::Operand::Reg(Register::R11),
-            ));
+            new_instructions.push(asm::Instruction::Cmp {
+                src: src.clone(),
+                dst: asm::Operand::Reg(Register::R11),
+            });
             true
         } else {
             false

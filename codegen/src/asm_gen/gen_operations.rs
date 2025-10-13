@@ -97,10 +97,10 @@ impl AsmGen {
 
     fn handle_logical_not(src: tacky::Value, dst: tacky::Value) -> Vec<Instruction> {
         let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Cmp(
-            asm::Operand::Immediate(0),
-            Self::convert_val(&src),
-        ));
+        new_instructions.push(asm::Instruction::Cmp {
+            src: asm::Operand::Immediate(0),
+            dst: Self::convert_val(&src),
+        });
         new_instructions.push(asm::Instruction::Mov {
             src: asm::Operand::Immediate(0),
             dst: Self::convert_val(&dst),
@@ -119,10 +119,10 @@ impl AsmGen {
         dst: tacky::Value,
     ) -> Vec<Instruction> {
         let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Cmp(
-            Self::convert_val(&src1),
-            Self::convert_val(&src2),
-        ));
+        new_instructions.push(asm::Instruction::Cmp {
+            src: Self::convert_val(&src2),
+            dst: Self::convert_val(&src1),
+        });
         new_instructions.push(asm::Instruction::Mov {
             src: asm::Operand::Immediate(0),
             dst: Self::convert_val(&dst),

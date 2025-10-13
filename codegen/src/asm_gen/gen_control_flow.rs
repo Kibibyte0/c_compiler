@@ -18,10 +18,10 @@ impl AsmGen {
         tar: tacky::Identifier,
     ) -> Vec<Instruction> {
         let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Cmp(
-            asm::Operand::Immediate(0),
-            Self::convert_val(&pred),
-        ));
+        new_instructions.push(asm::Instruction::Cmp {
+            src: asm::Operand::Immediate(0),
+            dst: Self::convert_val(&pred),
+        });
         new_instructions.push(asm::Instruction::JmpCC(
             asm::Cond::NE,
             asm::Identifier(tar.0),
@@ -34,10 +34,10 @@ impl AsmGen {
         tar: tacky::Identifier,
     ) -> Vec<Instruction> {
         let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Cmp(
-            asm::Operand::Immediate(0),
-            Self::convert_val(&pred),
-        ));
+        new_instructions.push(asm::Instruction::Cmp {
+            src: asm::Operand::Immediate(0),
+            dst: Self::convert_val(&pred),
+        });
         new_instructions.push(asm::Instruction::JmpCC(
             asm::Cond::E,
             asm::Identifier(tar.0),
