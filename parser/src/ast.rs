@@ -4,7 +4,7 @@ use std::ops::Range;
 
 pub use expressions::{BinaryOP, Expression, UnaryOP};
 
-#[derive(Hash, Eq, PartialEq, Debug)]
+#[derive(Debug, Clone)]
 pub struct Spanned<T> {
     node: T,
     span: Range<usize>,
@@ -13,6 +13,10 @@ pub struct Spanned<T> {
 impl<T> Spanned<T> {
     pub fn new(node: T, span: Range<usize>) -> Self {
         Self { node, span }
+    }
+
+    pub fn get_span_copy(&self) -> Range<usize> {
+        self.span.clone()
     }
 
     pub fn get_span_ref(&self) -> &Range<usize> {
@@ -39,7 +43,20 @@ pub struct Program {
 
 pub struct FunctionDef {
     name: Spanned<Identifier>,
-    body: Vec<Spanned<BlockItem>>,
+    body: Spanned<Block>,
+}
+
+pub struct Block {
+    items: Vec<Spanned<BlockItem>>,
+}
+
+impl Block {
+    pub fn new(items: Vec<Spanned<BlockItem>>) -> Self {
+        Self { items }
+    }
+    pub fn into_parts(self) -> Vec<Spanned<BlockItem>> {
+        self.items
+    }
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
@@ -78,6 +95,7 @@ pub enum Statement {
         if_clause: Box<Spanned<Statement>>,
         else_clause: Option<Box<Spanned<Statement>>>,
     },
+    Compound(Spanned<Block>),
     Null,
 }
 
@@ -110,7 +128,7 @@ impl Program {
 //
 
 impl FunctionDef {
-    pub fn new(name: Spanned<Identifier>, body: Vec<Spanned<BlockItem>>) -> Self {
+    pub fn new(name: Spanned<Identifier>, body: Spanned<Block>) -> Self {
         Self { name, body }
     }
 
@@ -120,11 +138,11 @@ impl FunctionDef {
     }
 
     /// get a shared ref to the function body
-    pub fn get_body_ref(&self) -> &Vec<Spanned<BlockItem>> {
+    pub fn get_body_ref(&self) -> &Spanned<Block> {
         &self.body
     }
 
-    pub fn into_parts(self) -> (Spanned<Identifier>, Vec<Spanned<BlockItem>>) {
+    pub fn into_parts(self) -> (Spanned<Identifier>, Spanned<Block>) {
         (self.name, self.body)
     }
 }

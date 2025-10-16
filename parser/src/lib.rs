@@ -1,7 +1,7 @@
 use lexer::{SpannedToken, token::Token};
 use parse_err::ParseErr;
 
-use crate::ast::{BlockItem, Declaration, FunctionDef, Identifier, Program, Spanned, Statement};
+use crate::ast::*;
 
 mod parse_err;
 mod parse_expressions;
@@ -86,9 +86,9 @@ impl<'a> Parser<'a> {
     }
 
     // entry point for the parser
-    fn parse_program(&mut self) -> Result<ast::Program, ParseErr> {
+    fn parse_program(&mut self) -> Result<Program, ParseErr> {
         let function = self.spanned(|this| this.parse_function())?;
-        let program = ast::Program::new(function);
+        let program = Program::new(function);
 
         if let Ok(tok) = self.advance() {
             Err(ParseErr::expected("end of input", tok))
@@ -97,7 +97,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_function(&mut self) -> Result<ast::FunctionDef, ParseErr> {
+    fn parse_function(&mut self) -> Result<FunctionDef, ParseErr> {
         self.expect_token("int")?;
 
         let name = self.spanned(|this| this.parse_identifier())?;
@@ -106,15 +106,20 @@ impl<'a> Parser<'a> {
         self.expect_token("void")?;
         self.expect_token(")")?;
 
+        let body = self.spanned(|this| this.parse_block())?;
+        Ok(FunctionDef::new(name, body))
+    }
+
+    fn parse_block(&mut self) -> Result<Block, ParseErr> {
         self.expect_token("{")?;
 
-        let mut function_body = Vec::new();
+        let mut block_items = Vec::new();
         while self.peek()?.get_token() != Token::RightCurlyBracket {
             let block_item = self.spanned(|this| this.parse_block_item())?;
-            function_body.push(block_item);
+            block_items.push(block_item);
         }
         self.advance()?; // consume the '}' token
-        Ok(FunctionDef::new(name, function_body))
+        Ok(Block::new(block_items))
     }
 
     fn parse_block_item(&mut self) -> Result<BlockItem, ParseErr> {
@@ -133,6 +138,7 @@ impl<'a> Parser<'a> {
                 self.advance()?; // consume the ';' token
                 Ok(Statement::Null)
             }
+            Token::LeftCurlyBracket => self.parse_compound_statement(),
             Token::If => self.parse_if_statement(),
             _ => {
                 let exp = self.parse_expression(0)?;
@@ -163,6 +169,12 @@ impl<'a> Parser<'a> {
         let exp = self.parse_expression(0)?;
         self.expect_token(";")?;
         Ok(Statement::Return(exp))
+    }
+
+    fn parse_compound_statement(&mut self) -> Result<Statement, ParseErr> {
+        Ok(Statement::Compound(
+            self.spanned(|this| this.parse_block())?,
+        ))
     }
 
     fn parse_if_statement(&mut self) -> Result<Statement, ParseErr> {

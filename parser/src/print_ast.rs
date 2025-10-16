@@ -19,12 +19,22 @@ impl DebuggingPrinter {
         let indent = " ".repeat(indent_level);
         let function = sp_function.discard_sp();
 
-        let (sp_name, body) = function.into_parts();
+        let (sp_name, sp_block) = function.into_parts();
         println!("{}Def {}", indent, sp_name.get_node_ref().get_name_ref());
+        Self::print_block(sp_block, indent_level + 2);
+    }
 
-        for sp_block_item in body {
-            Self::print_block_item(sp_block_item, indent_level + 2);
+    fn print_block(sp_block: Spanned<Block>, indent_level: usize) {
+        let indent = " ".repeat(indent_level);
+        let block_items = sp_block.discard_sp().into_parts();
+
+        println!("{}block(", indent);
+
+        for sp_item in block_items {
+            Self::print_block_item(sp_item, indent_level + 2);
         }
+
+        println!("{})", indent);
     }
 
     fn print_block_item(sp_block_item: Spanned<BlockItem>, indent_level: usize) {
@@ -65,6 +75,7 @@ impl DebuggingPrinter {
             Statement::Null => {
                 println!("{}Null", indent);
             }
+            Statement::Compound(sp_block) => Self::print_block(sp_block, indent_level),
             Statement::IfStatement {
                 condition,
                 if_clause,
