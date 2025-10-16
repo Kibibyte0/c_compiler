@@ -14,6 +14,7 @@ enum Stage {
     Tacky,
     Codegen,
     Validate,
+    Asm,
     None,
 }
 
@@ -34,6 +35,9 @@ struct Cli {
     #[arg(long, group = "stage")]
     validate: bool,
 
+    #[arg(long, group = "stage")]
+    asm: bool,
+
     file_path: String,
 }
 
@@ -49,6 +53,8 @@ impl Cli {
             Stage::Codegen
         } else if self.validate {
             Stage::Validate
+        } else if self.asm {
+            Stage::Asm
         } else {
             Stage::None
         }
@@ -68,19 +74,29 @@ fn run() -> Result<(), Box<dyn Error>> {
     let file_path = pre_process_file(&arg.file_path);
     let file_name = get_file_name(&arg.file_path);
 
-    let result = match arg.selected_stage() {
-        Stage::Lex => lexer_stage(&file_path, file_name),
+    match arg.selected_stage() {
+        Stage::Lex => lexer_stage(&file_path, file_name)?,
 
-        Stage::Parse | Stage::Validate => parser_stage(&file_path, file_name),
+        Stage::Parse | Stage::Validate => parser_stage(&file_path, file_name)?,
 
-        Stage::Tacky => tacky_stage(&file_path, file_name),
+        Stage::Tacky => tacky_stage(&file_path, file_name)?,
 
-        Stage::Codegen => codegen_stage(&file_path, file_name),
+        Stage::Codegen => codegen_stage(&file_path, file_name)?,
 
-        Stage::None => emit_assembly(&file_path, file_name),
+        Stage::Asm => {
+            emit_assembly(&file_path, file_name)?;
+            ()
+        }
+
+        // produce exe files
+        Stage::None => {
+            let output_file_path = emit_assembly(&file_path, file_name)?;
+            compile_assembly_file(&output_file_path, remove_file_extension(&arg.file_path));
+            delete_file(&output_file_path);
+        }
     };
     delete_file(&file_path);
-    result
+    Ok(())
 }
 
 // lex the program then exit without starting the other stages
@@ -145,7 +161,7 @@ fn codegen_stage(file_path: &str, file_name: &str) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
-fn emit_assembly(file_path: &str, file_name: &str) -> Result<(), Box<dyn Error>> {
+fn emit_assembly(file_path: &str, file_name: &str) -> Result<String, Box<dyn Error>> {
     let input_string = fs::read_to_string(&file_path)?;
 
     let lexer = lexer::Lexer::new(&input_string, &file_name);
@@ -161,8 +177,9 @@ fn emit_assembly(file_path: &str, file_name: &str) -> Result<(), Box<dyn Error>>
 
     InstructionFix::fix_instructions(&mut program_asm);
 
-    let output_path = set_file_name(file_path, "out.s");
-    Emitter::new(12, 16, 2).write_program(program_asm, output_path)?;
+    let asm_file_name = format!("{}.s", remove_file_extension(file_name));
+    let output_path = set_file_name(file_path, &asm_file_name);
+    Emitter::new(12, 16, 2).write_program(program_asm, &output_path)?;
 
-    Ok(())
+    Ok(output_path)
 }

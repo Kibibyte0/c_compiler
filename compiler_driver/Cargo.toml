@@ -5,8 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-lexer = { path = "../lexer" }
-parser = { path = "../parser" }
+parse = { path = "../parse" }
 semantic_analysis = { path = "../semantic_analysis" }
 codegen = { path = "../codegen" }
 emitter = { path = "../emitter" }

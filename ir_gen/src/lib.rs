@@ -34,19 +34,31 @@ impl IRgen {
     }
 
     fn gen_function_def(&mut self, sp_function: Spanned<ast::FunctionDef>) -> tacky::FunctionDef {
-        let (sp_name, body) = sp_function.discard_sp().into_parts();
+        let (sp_name, sp_block) = sp_function.discard_sp().into_parts();
         let mut instructions: Vec<tacky::Instruction> = Vec::new();
-        self.gen_function_body(body, &mut instructions);
-
+        self.gen_function_block(sp_block, &mut instructions);
         tacky::FunctionDef::new(Self::convert_identifier(sp_name), instructions)
     }
 
-    fn gen_function_body(
+    /// gen function block will add return 0 by default
+    fn gen_function_block(
         &mut self,
-        body: Vec<Spanned<ast::BlockItem>>,
+        sp_block: Spanned<ast::Block>,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
-        for sp_item in body {
+        for sp_item in sp_block.discard_sp().into_parts() {
+            self.gen_block_item(sp_item, instructions);
+        }
+
+        instructions.push(tacky::Instruction::Ret(tacky::Value::Constant(0)));
+    }
+
+    fn gen_block(
+        &mut self,
+        sp_block: Spanned<ast::Block>,
+        instructions: &mut Vec<tacky::Instruction>,
+    ) {
+        for sp_item in sp_block.discard_sp().into_parts() {
             self.gen_block_item(sp_item, instructions);
         }
     }

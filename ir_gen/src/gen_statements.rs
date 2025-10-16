@@ -18,6 +18,7 @@ impl IRgen {
                 self.gen_expression(sp_exp, instructions);
             }
             ast::Statement::Null => return,
+            ast::Statement::Compound(sp_block) => self.gen_block(sp_block, instructions),
             ast::Statement::IfStatement {
                 condition,
                 if_clause,

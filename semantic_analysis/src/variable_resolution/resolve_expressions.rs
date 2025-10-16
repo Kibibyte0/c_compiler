@@ -61,7 +61,7 @@ impl<'a> VariableResolver<'a> {
         ctx: &ResolverContext,
     ) -> Result<Spanned<Expression>, ErrorType> {
         let (name, name_span) = sp_name.into_parts();
-        if let Some(id) = ctx.var_map.get(&name) {
+        if let Some(id) = ctx.search_scope(&name) {
             Ok(Spanned::new(
                 Expression::Var(Spanned::new(
                     Identifier::new(id.get_node_ref().get_name_copy()),

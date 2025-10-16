@@ -12,6 +12,20 @@ pub fn pre_process_file(file_path: &str) -> String {
     pre_processed_file
 }
 
+/// compile assembly file
+pub fn compile_assembly_file(file_path: &str, output_file_path: &str) {
+    Command::new("gcc")
+        .args([file_path, "-o", output_file_path])
+        .output()
+        .expect("failed to compile assembly file");
+}
+
+/// remove the file extension from a path
+pub fn remove_file_extension(file_path: &str) -> &str {
+    let dot_index = file_path.rfind('.').expect("invalide source file name");
+    &file_path[..dot_index]
+}
+
 pub fn delete_file(file_path: &str) {
     Command::new("rm")
         .arg(file_path)

@@ -24,7 +24,7 @@ impl Emitter {
     pub fn write_program(
         &self,
         program: asm::Program,
-        output_file_path: String,
+        output_file_path: &str,
     ) -> std::io::Result<()> {
         let mut file = File::create(output_file_path)?;
         let mut code = String::new();
