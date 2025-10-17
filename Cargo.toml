@@ -4,4 +4,11 @@ resolver = "3"
 
 members = ["codegen",
     "compiler_driver", "emitter", "lexer", "parser"
-, "ir_gen", "semantic_analysis"]
+, "ir_gen", "semantic_analysis", "shared_context"]
+
+
+[profile.release]
+opt-level = 3       # Optimize for maximum execution speed
+lto = "fat"         # Enable the most aggressive Link Time Optimization
+codegen-units = 1   # Reduce code generation units for better global optimization
+strip = "debuginfo" # Remove debug information from the binary
