@@ -1,3 +1,4 @@
+use shared_context::{Identifier, interner::Interner};
 use std::collections::HashMap;
 
 pub mod asm;
@@ -12,7 +13,7 @@ mod reg_alloc;
 // three to fix invalid instructions
 
 pub struct RegisterAllocation {
-    pseudo_reg_map: HashMap<asm::Identifier, i32>,
+    pseudo_reg_map: HashMap<Identifier, i32>,
     sp_offest: i32,
 }
 
@@ -27,4 +28,6 @@ impl RegisterAllocation {
 
 pub struct AsmGen;
 pub struct InstructionFix;
-pub struct DebuggingPrinter;
+pub struct DebuggingPrinter<'a> {
+    interner: &'a Interner<'a>,
+}

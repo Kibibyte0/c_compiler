@@ -1,5 +1,4 @@
-use crate::tacky::Identifier;
-use std::fmt;
+use shared_context::Identifier;
 
 pub enum Instruction {
     Binary {
@@ -24,20 +23,20 @@ pub enum Instruction {
     Ret(Value),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum Value {
     Constant(i32),
     Var(Identifier),
 }
 
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Constant(val) => write!(f, "{}", val),
-            Value::Var(name) => write!(f, "{}", name.0),
-        }
-    }
-}
+// impl fmt::Display for Value {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         match self {
+//             Value::Constant(val) => write!(f, "{}", val),
+//             Value::Var(name) => write!(f, "{}", name.0),
+//         }
+//     }
+// }
 
 // tacky binary operations
 #[derive(Debug)]

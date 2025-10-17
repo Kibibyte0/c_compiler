@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+shared_context = { path = "../shared_context" }
 ir_gen = { path = "../ir_gen" }
 parser = { path = "../parser" }

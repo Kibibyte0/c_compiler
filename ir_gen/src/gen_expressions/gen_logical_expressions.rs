@@ -1,13 +1,13 @@
 use crate::IRgen;
 use crate::tacky;
-use parser::ast::{self, Spanned};
+use parser::ast::{self};
 
-impl IRgen {
+impl<'a, 'b> IRgen<'a, 'b> {
     pub(super) fn gen_logical_expr(
         &mut self,
         operator: ast::BinaryOP,
-        operand1: Spanned<ast::Expression>,
-        operand2: Spanned<ast::Expression>,
+        operand1: ast::Expression,
+        operand2: ast::Expression,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         match operator {
@@ -19,8 +19,8 @@ impl IRgen {
 
     fn gen_logical_and(
         &mut self,
-        operand1: Spanned<ast::Expression>,
-        operand2: Spanned<ast::Expression>,
+        operand1: ast::Expression,
+        operand2: ast::Expression,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         let result_var = self.make_temp_var();
@@ -31,22 +31,22 @@ impl IRgen {
         let val1 = self.gen_expression(operand1, instructions);
 
         // jump to false lable if val1 is zero
-        instructions.push(tacky::Instruction::JumpIfZero(val1, false_label.clone()));
+        instructions.push(tacky::Instruction::JumpIfZero(val1, false_label));
 
         // evaluate second expression, val2
         let val2 = self.gen_expression(operand2, instructions);
 
         // jump to false label if val2 is zero
-        instructions.push(tacky::Instruction::JumpIfZero(val2, false_label.clone()));
+        instructions.push(tacky::Instruction::JumpIfZero(val2, false_label));
 
         // both are non-zero => result = 1
         instructions.push(tacky::Instruction::Copy {
             src: tacky::Value::Constant(1),
-            dst: result_var.clone(),
+            dst: result_var,
         });
 
         // jump to end
-        instructions.push(tacky::Instruction::Jump(end_label.clone()));
+        instructions.push(tacky::Instruction::Jump(end_label));
 
         // false label
         instructions.push(tacky::Instruction::Label(false_label));
@@ -54,7 +54,7 @@ impl IRgen {
         // result = 0
         instructions.push(tacky::Instruction::Copy {
             src: tacky::Value::Constant(0),
-            dst: result_var.clone(),
+            dst: result_var,
         });
 
         // end label
@@ -65,8 +65,8 @@ impl IRgen {
 
     fn gen_logical_or(
         &mut self,
-        operand1: Spanned<ast::Expression>,
-        operand2: Spanned<ast::Expression>,
+        operand1: ast::Expression,
+        operand2: ast::Expression,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         let result_var = self.make_temp_var();
@@ -77,22 +77,22 @@ impl IRgen {
         let val1 = self.gen_expression(operand1, instructions);
 
         // jump to true lable if val1 is not zero
-        instructions.push(tacky::Instruction::JumpIfNotZero(val1, true_label.clone()));
+        instructions.push(tacky::Instruction::JumpIfNotZero(val1, true_label));
 
         // evaluate second expression, val2
         let val2 = self.gen_expression(operand2, instructions);
 
         // jump to true label if val2 is not zero
-        instructions.push(tacky::Instruction::JumpIfNotZero(val2, true_label.clone()));
+        instructions.push(tacky::Instruction::JumpIfNotZero(val2, true_label));
 
         // both are zero => result = 0
         instructions.push(tacky::Instruction::Copy {
             src: tacky::Value::Constant(0),
-            dst: result_var.clone(),
+            dst: result_var,
         });
 
         // jump to end label
-        instructions.push(tacky::Instruction::Jump(end_label.clone()));
+        instructions.push(tacky::Instruction::Jump(end_label));
 
         // true label
         instructions.push(tacky::Instruction::Label(true_label));
@@ -100,7 +100,7 @@ impl IRgen {
         // result = 1
         instructions.push(tacky::Instruction::Copy {
             src: tacky::Value::Constant(1),
-            dst: result_var.clone(),
+            dst: result_var,
         });
 
         // end label

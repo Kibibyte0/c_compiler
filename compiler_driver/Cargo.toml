@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+shared_context = { path = "../shared_context" }
 lexer = { path = "../lexer" }
 parser = { path = "../parser" }
 semantic_analysis = { path = "../semantic_analysis" }

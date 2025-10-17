@@ -1,4 +1,3 @@
-use crate::asm::Instruction;
 use crate::asm_gen::AsmGen;
 use crate::{asm, asm::Operand::Reg, asm::Register};
 use ir_gen::tacky;
@@ -11,18 +10,21 @@ impl AsmGen {
         src1: tacky::Value,
         src2: tacky::Value,
         dst: tacky::Value,
-    ) -> Vec<Instruction> {
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
         match op {
             tacky::BinaryOP::Div | tacky::BinaryOP::Mod => {
-                Self::handle_div_mod(op, src1, src2, dst)
+                Self::handle_div_mod(op, src1, src2, dst, asm_instructions)
             }
             tacky::BinaryOP::GreaterThan
             | tacky::BinaryOP::GreaterThanOrEq
             | tacky::BinaryOP::LessThan
             | tacky::BinaryOP::LessThanOrEq
             | tacky::BinaryOP::Equal
-            | tacky::BinaryOP::NotEqual => Self::handle_comparison(op, src1, src2, dst),
-            _ => Self::handle_regular_form(op, src1, src2, dst),
+            | tacky::BinaryOP::NotEqual => {
+                Self::handle_comparison(op, src1, src2, dst, asm_instructions)
+            }
+            _ => Self::handle_regular_form(op, src1, src2, dst, asm_instructions),
         }
     }
 
@@ -30,20 +32,19 @@ impl AsmGen {
         op: tacky::UnaryOP,
         src: tacky::Value,
         dst: tacky::Value,
-    ) -> Vec<Instruction> {
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
         match op {
-            tacky::UnaryOP::LogicalNot => Self::handle_logical_not(src, dst),
+            tacky::UnaryOP::LogicalNot => Self::handle_logical_not(src, dst, asm_instructions),
             _ => {
-                let mut new_instructions = Vec::new();
-                new_instructions.push(asm::Instruction::Mov {
-                    dst: Self::convert_val(&dst),
-                    src: Self::convert_val(&src),
+                asm_instructions.push(asm::Instruction::Mov {
+                    dst: Self::convert_val(dst),
+                    src: Self::convert_val(src),
                 });
-                new_instructions.push(asm::Instruction::Unary {
+                asm_instructions.push(asm::Instruction::Unary {
                     op: Self::convert_unary_op(op),
-                    dst: Self::convert_val(&dst),
+                    dst: Self::convert_val(dst),
                 });
-                new_instructions
             }
         }
     }
@@ -54,18 +55,17 @@ impl AsmGen {
         src1: tacky::Value,
         src2: tacky::Value,
         dst: tacky::Value,
-    ) -> Vec<Instruction> {
-        let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Mov {
-            dst: Self::convert_val(&dst),
-            src: Self::convert_val(&src1),
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
+        asm_instructions.push(asm::Instruction::Mov {
+            dst: Self::convert_val(dst),
+            src: Self::convert_val(src1),
         });
-        new_instructions.push(asm::Instruction::Binary {
+        asm_instructions.push(asm::Instruction::Binary {
             op: Self::convert_binary_op(op),
-            src: Self::convert_val(&src2),
-            dst: Self::convert_val(&dst),
+            src: Self::convert_val(src2),
+            dst: Self::convert_val(dst),
         });
-        new_instructions
     }
 
     fn handle_div_mod(
@@ -73,43 +73,43 @@ impl AsmGen {
         src1: tacky::Value,
         src2: tacky::Value,
         dst: tacky::Value,
-    ) -> Vec<Instruction> {
-        let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Mov {
-            src: Self::convert_val(&src1),
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
+        asm_instructions.push(asm::Instruction::Mov {
+            src: Self::convert_val(src1),
             dst: Reg(Register::AX),
         });
-        new_instructions.push(asm::Instruction::Cdq);
-        new_instructions.push(asm::Instruction::Idiv(Self::convert_val(&src2)));
+        asm_instructions.push(asm::Instruction::Cdq);
+        asm_instructions.push(asm::Instruction::Idiv(Self::convert_val(src2)));
 
         let ret_reg = match op {
             tacky::BinaryOP::Mod => Reg(Register::DX),
             _ => Reg(Register::AX),
         };
 
-        new_instructions.push(asm::Instruction::Mov {
+        asm_instructions.push(asm::Instruction::Mov {
             src: ret_reg,
-            dst: Self::convert_val(&dst),
+            dst: Self::convert_val(dst),
         });
-
-        new_instructions
     }
 
-    fn handle_logical_not(src: tacky::Value, dst: tacky::Value) -> Vec<Instruction> {
-        let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Cmp {
+    fn handle_logical_not(
+        src: tacky::Value,
+        dst: tacky::Value,
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
+        asm_instructions.push(asm::Instruction::Cmp {
             src: asm::Operand::Immediate(0),
-            dst: Self::convert_val(&src),
+            dst: Self::convert_val(src),
         });
-        new_instructions.push(asm::Instruction::Mov {
+        asm_instructions.push(asm::Instruction::Mov {
             src: asm::Operand::Immediate(0),
-            dst: Self::convert_val(&dst),
+            dst: Self::convert_val(dst),
         });
-        new_instructions.push(asm::Instruction::SetCC(
+        asm_instructions.push(asm::Instruction::SetCC(
             asm::Cond::E,
-            Self::convert_val(&dst),
+            Self::convert_val(dst),
         ));
-        new_instructions
     }
 
     fn handle_comparison(
@@ -117,21 +117,20 @@ impl AsmGen {
         src1: tacky::Value,
         src2: tacky::Value,
         dst: tacky::Value,
-    ) -> Vec<Instruction> {
-        let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Cmp {
-            src: Self::convert_val(&src2),
-            dst: Self::convert_val(&src1),
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
+        asm_instructions.push(asm::Instruction::Cmp {
+            src: Self::convert_val(src2),
+            dst: Self::convert_val(src1),
         });
-        new_instructions.push(asm::Instruction::Mov {
+        asm_instructions.push(asm::Instruction::Mov {
             src: asm::Operand::Immediate(0),
-            dst: Self::convert_val(&dst),
+            dst: Self::convert_val(dst),
         });
-        new_instructions.push(asm::Instruction::SetCC(
+        asm_instructions.push(asm::Instruction::SetCC(
             Self::convert_comparison_op(op),
-            Self::convert_val(&dst),
+            Self::convert_val(dst),
         ));
-        new_instructions
     }
 
     fn convert_binary_op(op: tacky::BinaryOP) -> asm::BinaryOP {

@@ -1,26 +1,41 @@
+use shared_context::Identifier;
+use shared_context::interner::Interner;
+
 use crate::DebuggingPrinter;
 use crate::asm;
 
-impl DebuggingPrinter {
-    pub fn print(program: asm::Program) {
+impl<'a> DebuggingPrinter<'a> {
+    pub fn new(interner: &'a Interner<'a>) -> Self {
+        Self { interner }
+    }
+
+    pub fn print(&self, program: asm::Program) {
         println!("Program");
 
         let function = program.into_parts();
-        Self::print_function(function);
+        self.print_function(function);
     }
 
-    fn print_function(function: asm::FunctionDef) {
+    fn format_identifier(&self, identifier: Identifier) -> String {
+        format!("{}", self.interner.lookup(identifier.get_symbol()))
+    }
+
+    fn print_function(&self, function: asm::FunctionDef) {
         let (name, instructions) = function.into_parts();
 
         let indent = " ".repeat(2);
-        println!("{}FunctionDef {}", indent, name.0);
+        println!(
+            "{}FunctionDef {}",
+            indent,
+            self.interner.lookup(name.get_symbol())
+        );
 
         for instr in instructions {
-            Self::print_instruction(instr);
+            self.print_instruction(instr);
         }
     }
 
-    fn print_instruction(instr: asm::Instruction) {
+    fn print_instruction(&self, instr: asm::Instruction) {
         let indent = " ".repeat(4); // 4 spaces for indentation
 
         match instr {
@@ -46,16 +61,21 @@ impl DebuggingPrinter {
                 println!("{}Cdq", indent);
             }
             asm::Instruction::Jmp(label) => {
-                println!("{}Jmp({:?})", indent, label);
+                println!("{}Jmp({:?})", indent, self.format_identifier(label));
             }
             asm::Instruction::JmpCC(cond, label) => {
-                println!("{}JmpCC(cond: {:?}, label: {:?})", indent, cond, label);
+                println!(
+                    "{}JmpCC(cond: {:?}, label: {:?})",
+                    indent,
+                    cond,
+                    self.format_identifier(label)
+                );
             }
             asm::Instruction::SetCC(cond, dst) => {
                 println!("{}SetCC(cond: {:?}, dst: {:?})", indent, cond, dst);
             }
             asm::Instruction::Label(label) => {
-                println!("{}Label({:?})", indent, label);
+                println!("{}Label({:?})", indent, self.format_identifier(label));
             }
             asm::Instruction::AllocateStack(size) => {
                 println!("{}AllocateStack({:?})", indent, size);

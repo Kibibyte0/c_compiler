@@ -5,10 +5,10 @@ use token::Token;
 
 pub mod token;
 
+#[derive(Clone)]
 pub struct SpannedToken<'a> {
     token: Token,
-    source_code: &'a str,
-    file_name: &'a str,
+    lexeme: &'a str,
     span: Range<usize>,
 }
 
@@ -16,20 +16,18 @@ impl<'a> Default for SpannedToken<'a> {
     fn default() -> Self {
         Self {
             token: Token::Skip,
-            source_code: "",
-            file_name: "",
+            lexeme: "",
             span: Range { start: 0, end: 0 },
         }
     }
 }
 
 impl<'a> SpannedToken<'a> {
-    pub fn new(token: Token, span: Range<usize>, source_code: &'a str, file_name: &'a str) -> Self {
+    pub fn new(token: Token, lexeme: &'a str, span: Range<usize>) -> Self {
         Self {
             token,
+            lexeme,
             span,
-            source_code,
-            file_name,
         }
     }
 
@@ -37,55 +35,23 @@ impl<'a> SpannedToken<'a> {
         self.token
     }
 
-    pub fn get_span(&self) -> &Range<usize> {
-        &self.span
+    pub fn get_span(&self) -> Range<usize> {
+        self.span.clone()
     }
 
     pub fn get_lexeme(&self) -> &'a str {
-        let start = self.get_span().start;
-        let end = self.get_span().end;
-        &self.source_code[start..end]
-    }
-
-    pub fn get_source_code(&self) -> &'a str {
-        self.source_code
-    }
-
-    pub fn get_file_name(&self) -> String {
-        self.file_name.to_string()
-    }
-
-    pub fn calculate_token_pos(&self) -> Option<(usize, usize)> {
-        if self.span.end > self.source_code.len() {
-            return None;
-        }
-
-        let mut line_number = 1;
-        let mut last_line_end = 0;
-
-        for (i, c) in self.source_code[..self.span.end].char_indices() {
-            if c == '\n' {
-                line_number += 1;
-                last_line_end = i + 1;
-            }
-        }
-
-        Some((line_number, self.span.end - last_line_end + 1))
+        self.lexeme
     }
 }
 
 pub struct Lexer<'a> {
     lex: logos::Lexer<'a, Token>,
-    source_code: &'a str,
-    file_name: &'a str,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source_code: &'a str, file_name: &'a str) -> Self {
+    pub fn new(source_code: &'a str) -> Self {
         Self {
             lex: Token::lexer(source_code),
-            source_code,
-            file_name,
         }
     }
 
@@ -99,12 +65,7 @@ impl<'a> Lexer<'a> {
             match token {
                 Token::Skip => continue,
                 _ => {
-                    return Some(SpannedToken::new(
-                        token,
-                        self.lex.span(),
-                        self.source_code,
-                        self.file_name,
-                    ));
+                    return Some(SpannedToken::new(token, self.lex.slice(), self.lex.span()));
                 }
             }
         }

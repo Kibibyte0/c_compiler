@@ -4,7 +4,7 @@ use std::fmt;
 
 mod to_x86_asm;
 
-impl Emitter {
+impl<'a> Emitter<'a> {
     pub(crate) fn write_instruction(
         &self,
         instr: asm::Instruction,
@@ -122,7 +122,7 @@ impl Emitter {
         label: asm::Identifier,
         out: &mut impl std::fmt::Write,
     ) -> fmt::Result {
-        let tar = format!(".L{}", label.0);
+        let tar = format!(".L{}", self.format_identifier(label));
         let instr = self.format_one_operand_instruction("jmp", &tar);
         write!(out, "{}", instr)
     }
@@ -134,7 +134,7 @@ impl Emitter {
         out: &mut impl std::fmt::Write,
     ) -> fmt::Result {
         let op = format!("j{}", Emitter::convert_cond(cond));
-        let tar = format!(".L{}", label.0);
+        let tar = format!(".L{}", self.format_identifier(label));
 
         let instr = self.format_one_operand_instruction(&op, &tar);
         write!(out, "{}", instr)
@@ -154,7 +154,7 @@ impl Emitter {
     }
 
     fn write_label(&self, label: asm::Identifier, out: &mut impl std::fmt::Write) -> fmt::Result {
-        let label = format!(".L{}", label.0);
+        let label = format!(".L{}", self.format_identifier(label));
         write!(out, "{}:\n", label)
     }
 

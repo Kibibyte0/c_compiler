@@ -1,7 +1,7 @@
 use crate::asm::Identifier;
 // use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum Instruction {
     Mov {
         src: Operand,
@@ -30,7 +30,7 @@ pub enum Instruction {
     Ret,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum Cond {
     E,
     NE,
@@ -40,7 +40,7 @@ pub enum Cond {
     LE,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum Operand {
     Reg(Register),
     Pseudo(Identifier),
@@ -48,7 +48,7 @@ pub enum Operand {
     Immediate(i32),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum Register {
     AX,
     DX,
@@ -57,7 +57,7 @@ pub enum Register {
 }
 
 // assembly binary operator
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum BinaryOP {
     Add,
     Sub,
@@ -65,7 +65,7 @@ pub enum BinaryOP {
 }
 
 // assmebly unary operator
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum UnaryOP {
     Not,
     Neg,

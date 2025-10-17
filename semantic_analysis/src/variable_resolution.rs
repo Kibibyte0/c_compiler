@@ -1,16 +1,15 @@
 use crate::semantic_error::{ErrorType, SemanticErr};
 use crate::{ResolverContext, VariableResolver};
 use parser::ast::*;
-use std::ops::Range;
+use shared_context::{CompilerContext, Identifier};
 
 mod resolve_expressions;
 
-impl<'a> VariableResolver<'a> {
-    pub fn new(file_name: &'a str, source_code: &'a str) -> Self {
+impl<'a, 'c> VariableResolver<'a, 'c> {
+    pub fn new(compiler_ctx: &'c CompilerContext<'a>) -> Self {
         Self {
+            compiler_ctx,
             variable_counter: 0,
-            file_name,
-            source_code,
         }
     }
 
@@ -18,154 +17,145 @@ impl<'a> VariableResolver<'a> {
         self.variable_counter
     }
 
-    /// generate a temporary variable
-    pub fn make_temp(&mut self, name: &Identifier) -> Identifier {
-        let string = name.get_name_ref();
-        let temp = format!("{}.{}", string, self.variable_counter);
+    pub fn get_var_count_and_increment(&mut self) -> usize {
+        let count = self.variable_counter;
         self.variable_counter += 1;
-        Identifier::new(temp)
+        count
     }
 
-    pub fn resolve_program(
-        &mut self,
-        sp_program: Spanned<Program>,
-    ) -> Result<Spanned<Program>, SemanticErr> {
-        let (program, span) = sp_program.into_parts();
-        let sp_function = program.into_parts();
-        let mut ctx = ResolverContext::new();
-        let new_sp_function = self.resolve_function(sp_function, &mut ctx)?;
-        Ok(Spanned::new(Program::new(new_sp_function), span))
+    pub fn resolve_program(&mut self, program: Program) -> Result<Program, SemanticErr> {
+        let function = program.into_parts();
+        let mut resolver_ctx = ResolverContext::new();
+        let resolved_function = self.resolve_function(function, &mut resolver_ctx)?;
+        Ok(Program::new(resolved_function))
     }
 
     fn resolve_function(
         &mut self,
-        sp_function: Spanned<FunctionDef>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<FunctionDef>, SemanticErr> {
-        let (function, span) = sp_function.into_parts();
-        let (sp_name, sp_block) = function.into_parts();
-        let new_body = match self.resolve_block(sp_block, ctx) {
+        function: FunctionDef,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<FunctionDef, SemanticErr> {
+        let (name, block, span) = function.into_parts();
+        let resolved_body = match self.resolve_block(block, resolver_ctx) {
             Ok(new_block) => new_block,
-            Err(err) => return Err(SemanticErr::new(err, self.file_name, self.source_code)),
+            Err(err) => {
+                return Err(SemanticErr::new(err, &self.compiler_ctx.source_map));
+            }
         };
-        Ok(Spanned::new(FunctionDef::new(sp_name, new_body), span))
+        Ok(FunctionDef::new(name, resolved_body, span))
     }
 
     fn resolve_block(
         &mut self,
-        sp_block: Spanned<Block>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Block>, ErrorType> {
-        ctx.create_scope();
+        block: Block,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<Block, ErrorType> {
+        resolver_ctx.create_scope();
 
-        let (block_items, span) = sp_block.into_parts();
-        let mut new_body = Vec::new();
-        for sp_item in block_items.into_parts() {
-            let new_sp_item = self.resolve_block_item(sp_item, ctx)?;
-            new_body.push(new_sp_item);
+        let (block_items, span) = block.into_parts();
+        let mut resolved_body = Vec::new();
+        for item in block_items {
+            let resolved_item = self.resolve_block_item(item, resolver_ctx)?;
+            resolved_body.push(resolved_item);
         }
 
-        ctx.delete_scope();
+        resolver_ctx.delete_scope();
 
-        Ok(Spanned::new(Block::new(new_body), span))
+        Ok(Block::new(resolved_body, span))
     }
 
     fn resolve_block_item(
         &mut self,
-        sp_item: Spanned<BlockItem>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<BlockItem>, ErrorType> {
-        let (item, span) = sp_item.into_parts();
-        let new_item = match item {
-            BlockItem::D(sp_decl) => BlockItem::D(self.resolve_declaration(sp_decl, ctx)?),
-            BlockItem::S(sp_stmt) => BlockItem::S(self.resolve_statement(sp_stmt, ctx)?),
+        item: BlockItem,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<BlockItem, ErrorType> {
+        let resolved_item = match item {
+            BlockItem::D(decl) => BlockItem::D(self.resolve_declaration(decl, resolver_ctx)?),
+            BlockItem::S(stmt) => BlockItem::S(self.resolve_statement(stmt, resolver_ctx)?),
         };
-        Ok(Spanned::new(new_item, span))
+        Ok(resolved_item)
     }
 
     fn resolve_declaration(
         &mut self,
-        sp_decl: Spanned<Declaration>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Declaration>, ErrorType> {
-        let (decl, decl_span) = sp_decl.into_parts();
-        let (sp_name, mut sp_init) = decl.into_parts();
-        let (name, name_span) = sp_name.into_parts();
+        decl: Declaration,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<Declaration, ErrorType> {
+        let (name, mut init, span) = decl.into_parts();
+        let (symbol, _, name_span) = name.into_parts();
 
-        if let Some(id) = ctx.search_current_scope(&name) {
+        if let Some(id) = resolver_ctx.search_current_scope(&symbol) {
             return Err(ErrorType::DeclaredTwice {
-                first: id.get_span_copy(),
+                first: id.get_span(),
                 second: name_span,
             });
         }
 
-        let new_name = self.make_temp(&name);
+        let count = self.get_var_count_and_increment();
+        let resolved_name = Identifier::new(symbol, count, name_span);
 
-        ctx.insert_variable(name, Spanned::new(new_name.clone(), name_span.clone()));
+        resolver_ctx.insert_variable(symbol, resolved_name);
 
-        if let Some(expr) = sp_init {
-            sp_init = Some(self.resolve_expression(expr, ctx)?);
+        if let Some(expr) = init {
+            init = Some(self.resolve_expression(expr, resolver_ctx)?);
         }
 
-        Ok(Spanned::new(
-            Declaration::new(Spanned::new(new_name, name_span), sp_init),
-            decl_span,
-        ))
+        Ok(Declaration::new(resolved_name, init, span))
     }
 
     fn resolve_statement(
         &mut self,
-        sp_stmt: Spanned<Statement>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Statement>, ErrorType> {
-        let (stmt, span) = sp_stmt.into_parts();
+        stmt: Statement,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<Statement, ErrorType> {
+        let (stmt_type, span) = stmt.into_parts();
 
-        match stmt {
-            Statement::Return(exp) => {
-                let exp = self.resolve_expression(exp, ctx)?;
-                Ok(Spanned::new(Statement::Return(exp), span))
+        let resolved_stmt_type = match stmt_type {
+            StatementType::Return(expr) => {
+                let expr = self.resolve_expression(expr, resolver_ctx)?;
+                StatementType::Return(expr)
             }
-            Statement::ExprStatement(exp) => {
-                let exp = self.resolve_expression(exp, ctx)?;
-                Ok(Spanned::new(Statement::ExprStatement(exp), span))
+            StatementType::ExprStatement(expr) => {
+                let expr = self.resolve_expression(expr, resolver_ctx)?;
+                StatementType::ExprStatement(expr)
             }
-            Statement::Compound(sp_block) => Ok(Spanned::new(
-                Statement::Compound(self.resolve_block(sp_block, ctx)?),
-                span,
-            )),
-            Statement::IfStatement {
+            StatementType::Compound(sp_block) => {
+                StatementType::Compound(self.resolve_block(sp_block, resolver_ctx)?)
+            }
+
+            StatementType::IfStatement {
                 condition,
                 if_clause,
                 else_clause,
-            } => self.resolve_if_statement(condition, *if_clause, else_clause, span, ctx),
-            Statement::Null => Ok(Spanned::new(Statement::Null, span)),
-        }
+            } => {
+                self.resolve_if_statement_type(condition, *if_clause, else_clause, resolver_ctx)?
+            }
+            StatementType::Null => StatementType::Null,
+        };
+
+        Ok(Statement::new(resolved_stmt_type, span))
     }
 
-    fn resolve_if_statement(
+    fn resolve_if_statement_type(
         &mut self,
-        condition: Spanned<Expression>,
-        if_clause: Spanned<Statement>,
-        else_clause: Option<Box<Spanned<Statement>>>,
-        span: Range<usize>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Statement>, ErrorType> {
-        let condition = self.resolve_expression(condition, ctx)?;
-        let if_clause = Box::new(self.resolve_statement(if_clause, ctx)?);
+        condition: Expression,
+        if_clause: Statement,
+        else_clause: Option<Box<Statement>>,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<StatementType, ErrorType> {
+        let condition = self.resolve_expression(condition, resolver_ctx)?;
+        let if_clause = Box::new(self.resolve_statement(if_clause, resolver_ctx)?);
 
         let else_clause = if let Some(clause) = else_clause {
-            Some(Box::new(self.resolve_statement(*clause, ctx)?))
+            Some(Box::new(self.resolve_statement(*clause, resolver_ctx)?))
         } else {
             None
         };
 
-        Ok(Spanned::new(
-            Statement::IfStatement {
-                condition,
-                if_clause,
-                else_clause,
-            },
-            span,
-        ))
+        Ok(StatementType::IfStatement {
+            condition,
+            if_clause,
+            else_clause,
+        })
     }
 }

@@ -2,53 +2,51 @@ use super::ResolverContext;
 use crate::VariableResolver;
 use crate::semantic_error::ErrorType;
 use parser::ast::*;
-use std::ops::Range;
+use shared_context::Identifier;
 
-impl<'a> VariableResolver<'a> {
+impl<'a, 'c> VariableResolver<'a, 'c> {
     pub(super) fn resolve_expression(
         &mut self,
-        sp_exp: Spanned<Expression>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Expression>, ErrorType> {
-        let (exp, span) = sp_exp.into_parts();
-        match exp {
-            Expression::Assignment { lvalue, rvalue } => {
-                self.resolve_assignment(*lvalue, *rvalue, span, ctx)
+        expr: Expression,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<Expression, ErrorType> {
+        let (expr_type, span) = expr.into_parts();
+        let resolved_expr_type = match expr_type {
+            ExpressionType::Assignment { lvalue, rvalue } => {
+                self.resolve_assignment(*lvalue, *rvalue, resolver_ctx)?
             }
-            Expression::Var(sp_name) => self.resolve_variable(sp_name, span, ctx),
-            Expression::Binary {
+            ExpressionType::Var(name) => self.resolve_variable(name, resolver_ctx)?,
+            ExpressionType::Binary {
                 operator,
                 operand1,
                 operand2,
-            } => self.resolve_binary(operator, *operand1, *operand2, span, ctx),
-            Expression::Unary { operator, operand } => {
-                self.resolve_unary(operator, *operand, span, ctx)
+            } => self.resolve_binary(operator, *operand1, *operand2, resolver_ctx)?,
+            ExpressionType::Unary { operator, operand } => {
+                self.resolve_unary(operator, *operand, resolver_ctx)?
             }
-            Expression::Constant(int) => Ok(Spanned::new(Expression::Constant(int), span)),
-            Expression::Conditional { cond, cons, alt } => {
-                self.resolve_condtional(*cond, *cons, *alt, span, ctx)
+            ExpressionType::Constant(int) => ExpressionType::Constant(int),
+            ExpressionType::Conditional { cond, cons, alt } => {
+                self.resolve_condtional(*cond, *cons, *alt, resolver_ctx)?
             }
-        }
+        };
+
+        Ok(Expression::new(resolved_expr_type, span))
     }
 
     fn resolve_assignment(
         &mut self,
-        lvalue: Spanned<Expression>,
-        rvalue: Spanned<Expression>,
-        span: Range<usize>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Expression>, ErrorType> {
-        let lexp = lvalue.get_node_ref();
-        match lexp {
-            Expression::Var(_) => Ok(Spanned::new(
-                Expression::Assignment {
-                    lvalue: Box::new(self.resolve_expression(lvalue, ctx)?),
-                    rvalue: Box::new(self.resolve_expression(rvalue, ctx)?),
-                },
-                span,
-            )),
+        lvalue: Expression,
+        rvalue: Expression,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<ExpressionType, ErrorType> {
+        let lexpr_type = lvalue.get_expr_type_ref();
+        match lexpr_type {
+            ExpressionType::Var(_) => Ok(ExpressionType::Assignment {
+                lvalue: Box::new(self.resolve_expression(lvalue, resolver_ctx)?),
+                rvalue: Box::new(self.resolve_expression(rvalue, resolver_ctx)?),
+            }),
             _ => {
-                let lspan = lvalue.get_span_ref().clone();
+                let (_, lspan) = lvalue.into_parts();
                 Err(ErrorType::InvalidLeftValue(lspan))
             }
         }
@@ -56,73 +54,55 @@ impl<'a> VariableResolver<'a> {
 
     fn resolve_variable(
         &mut self,
-        sp_name: Spanned<Identifier>,
-        span: Range<usize>,
-        ctx: &ResolverContext,
-    ) -> Result<Spanned<Expression>, ErrorType> {
-        let (name, name_span) = sp_name.into_parts();
-        if let Some(id) = ctx.search_scope(&name) {
-            Ok(Spanned::new(
-                Expression::Var(Spanned::new(
-                    Identifier::new(id.get_node_ref().get_name_copy()),
-                    name_span,
-                )),
-                span,
-            ))
+        name: Identifier,
+        resolver_ctx: &ResolverContext,
+    ) -> Result<ExpressionType, ErrorType> {
+        let symbol = name.get_symbol();
+        if let Some(id) = resolver_ctx.search_scope(&symbol) {
+            Ok(ExpressionType::Var(id))
         } else {
-            Err(ErrorType::UseOfUndeclared(name_span))
+            let (_, _, span) = name.into_parts();
+            Err(ErrorType::UseOfUndeclared(span))
         }
     }
 
     fn resolve_binary(
         &mut self,
         operator: BinaryOP,
-        operand1: Spanned<Expression>,
-        operand2: Spanned<Expression>,
-        span: Range<usize>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Expression>, ErrorType> {
-        Ok(Spanned::new(
-            Expression::Binary {
-                operator,
-                operand1: Box::new(self.resolve_expression(operand1, ctx)?),
-                operand2: Box::new(self.resolve_expression(operand2, ctx)?),
-            },
-            span,
-        ))
+        operand1: Expression,
+        operand2: Expression,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<ExpressionType, ErrorType> {
+        Ok(ExpressionType::Binary {
+            operator,
+            operand1: Box::new(self.resolve_expression(operand1, resolver_ctx)?),
+            operand2: Box::new(self.resolve_expression(operand2, resolver_ctx)?),
+        })
     }
 
     fn resolve_unary(
         &mut self,
         operator: UnaryOP,
-        operand: Spanned<Expression>,
-        span: Range<usize>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Expression>, ErrorType> {
-        Ok(Spanned::new(
-            Expression::Unary {
-                operator,
-                operand: Box::new(self.resolve_expression(operand, ctx)?),
-            },
-            span,
-        ))
+        operand: Expression,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<ExpressionType, ErrorType> {
+        Ok(ExpressionType::Unary {
+            operator,
+            operand: Box::new(self.resolve_expression(operand, resolver_ctx)?),
+        })
     }
 
     fn resolve_condtional(
         &mut self,
-        cond: Spanned<Expression>,
-        cons: Spanned<Expression>,
-        alt: Spanned<Expression>,
-        span: Range<usize>,
-        ctx: &mut ResolverContext,
-    ) -> Result<Spanned<Expression>, ErrorType> {
-        let cond = Box::new(self.resolve_expression(cond, ctx)?);
-        let cons = Box::new(self.resolve_expression(cons, ctx)?);
-        let alt = Box::new(self.resolve_expression(alt, ctx)?);
+        cond: Expression,
+        cons: Expression,
+        alt: Expression,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<ExpressionType, ErrorType> {
+        let cond = Box::new(self.resolve_expression(cond, resolver_ctx)?);
+        let cons = Box::new(self.resolve_expression(cons, resolver_ctx)?);
+        let alt = Box::new(self.resolve_expression(alt, resolver_ctx)?);
 
-        Ok(Spanned::new(
-            Expression::Conditional { cond, cons, alt },
-            span,
-        ))
+        Ok(ExpressionType::Conditional { cond, cons, alt })
     }
 }

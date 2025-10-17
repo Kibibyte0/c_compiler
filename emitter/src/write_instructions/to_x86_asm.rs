@@ -2,7 +2,7 @@ use codegen::asm;
 
 use crate::Emitter;
 
-impl Emitter {
+impl<'a> Emitter<'a> {
     /// convert an operand to it's x86_64 form, reg_size specifiy the size of the register in bytes
     /// if the operand is a register, entering an invalid size will default to $ bytes
     pub(crate) fn convert_operand(operand: asm::Operand, comma: bool, reg_size: usize) -> String {

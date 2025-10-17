@@ -1,25 +1,26 @@
 use crate::IRgen;
 use crate::tacky;
-use parser::ast::{self, Expression, Spanned, Statement};
+use parser::ast::{self, Expression, Statement};
 
-impl IRgen {
+impl<'a, 'b> IRgen<'a, 'b> {
     pub(crate) fn gen_statements(
         &mut self,
-        sp_stmt: Spanned<ast::Statement>,
+        stmt: ast::Statement,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
-        match sp_stmt.discard_sp() {
-            ast::Statement::Return(sp_exp) => {
-                let val = self.gen_expression(sp_exp, instructions);
+        let (stmt_type, _) = stmt.into_parts();
+        match stmt_type {
+            ast::StatementType::Return(expr) => {
+                let val = self.gen_expression(expr, instructions);
                 let instr = tacky::Instruction::Ret(val);
                 instructions.push(instr);
             }
-            ast::Statement::ExprStatement(sp_exp) => {
-                self.gen_expression(sp_exp, instructions);
+            ast::StatementType::ExprStatement(expr) => {
+                self.gen_expression(expr, instructions);
             }
-            ast::Statement::Null => return,
-            ast::Statement::Compound(sp_block) => self.gen_block(sp_block, instructions),
-            ast::Statement::IfStatement {
+            ast::StatementType::Null => return,
+            ast::StatementType::Compound(block) => self.gen_block(block, instructions),
+            ast::StatementType::IfStatement {
                 condition,
                 if_clause,
                 else_clause,
@@ -29,9 +30,9 @@ impl IRgen {
 
     fn gen_if_statement(
         &mut self,
-        condition: Spanned<Expression>,
-        if_clause: Spanned<Statement>,
-        else_clause: Option<Box<Spanned<Statement>>>,
+        condition: Expression,
+        if_clause: Statement,
+        else_clause: Option<Box<Statement>>,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
         match else_clause {
@@ -44,23 +45,20 @@ impl IRgen {
 
     fn gen_if_statement_with_else_clause(
         &mut self,
-        condition: Spanned<Expression>,
-        if_clause: Spanned<Statement>,
-        else_clause: Spanned<Statement>,
+        condition: Expression,
+        if_clause: Statement,
+        else_clause: Statement,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
         let else_label = self.make_label();
         let end_label = self.make_label();
 
         let cond_result = self.gen_expression(condition, instructions);
-        instructions.push(tacky::Instruction::JumpIfZero(
-            cond_result,
-            else_label.clone(),
-        ));
+        instructions.push(tacky::Instruction::JumpIfZero(cond_result, else_label));
 
         self.gen_statements(if_clause, instructions);
 
-        instructions.push(tacky::Instruction::Jump(end_label.clone()));
+        instructions.push(tacky::Instruction::Jump(end_label));
 
         instructions.push(tacky::Instruction::Label(else_label));
 
@@ -71,17 +69,14 @@ impl IRgen {
 
     fn gen_if_statement_without_else_clause(
         &mut self,
-        condition: Spanned<Expression>,
-        if_clause: Spanned<Statement>,
+        condition: Expression,
+        if_clause: Statement,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
         let end_label = self.make_label();
 
         let cond_result = self.gen_expression(condition, instructions);
-        instructions.push(tacky::Instruction::JumpIfZero(
-            cond_result,
-            end_label.clone(),
-        ));
+        instructions.push(tacky::Instruction::JumpIfZero(cond_result, end_label));
 
         self.gen_statements(if_clause, instructions);
 

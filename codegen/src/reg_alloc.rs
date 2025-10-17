@@ -61,7 +61,7 @@ impl RegisterAllocation {
                     *operand = asm::Operand::Stack(*int);
                 } else {
                     self.sp_offest -= 4;
-                    self.pseudo_reg_map.insert(id.clone(), self.sp_offest);
+                    self.pseudo_reg_map.insert(*id, self.sp_offest);
                     *operand = asm::Operand::Stack(self.sp_offest);
                 }
             }

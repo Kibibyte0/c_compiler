@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 codegen = { path = "../codegen" }
+shared_context = { path = "../shared_context" }

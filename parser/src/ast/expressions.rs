@@ -1,27 +1,47 @@
-use crate::ast::{Identifier, Spanned};
+use crate::ast::{Identifier, Span};
 
 #[derive(Debug)]
-pub enum Expression {
+pub struct Expression {
+    expr: ExpressionType,
+    span: Span,
+}
+
+#[derive(Debug)]
+pub enum ExpressionType {
     Constant(i32),
     Unary {
         operator: UnaryOP,
-        operand: Box<Spanned<Expression>>,
+        operand: Box<Expression>,
     },
     Binary {
         operator: BinaryOP,
-        operand1: Box<Spanned<Expression>>,
-        operand2: Box<Spanned<Expression>>,
+        operand1: Box<Expression>,
+        operand2: Box<Expression>,
     },
     Conditional {
-        cond: Box<Spanned<Expression>>,
-        cons: Box<Spanned<Expression>>,
-        alt: Box<Spanned<Expression>>,
+        cond: Box<Expression>,
+        cons: Box<Expression>,
+        alt: Box<Expression>,
     },
-    Var(Spanned<Identifier>),
+    Var(Identifier),
     Assignment {
-        lvalue: Box<Spanned<Expression>>,
-        rvalue: Box<Spanned<Expression>>,
+        lvalue: Box<Expression>,
+        rvalue: Box<Expression>,
     },
+}
+
+impl Expression {
+    pub fn new(expr: ExpressionType, span: Span) -> Self {
+        Self { expr, span }
+    }
+
+    pub fn get_expr_type_ref(&self) -> &ExpressionType {
+        &self.expr
+    }
+
+    pub fn into_parts(self) -> (ExpressionType, Span) {
+        (self.expr, self.span)
+    }
 }
 
 #[derive(Debug)]

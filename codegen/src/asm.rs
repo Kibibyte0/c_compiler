@@ -1,16 +1,7 @@
-use std::fmt;
 mod instructions;
 
 pub use instructions::{BinaryOP, Cond, Instruction, Operand, Register, UnaryOP};
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Identifier(pub String);
-
-impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+pub use shared_context::Identifier;
 
 pub struct Program {
     function: FunctionDef,

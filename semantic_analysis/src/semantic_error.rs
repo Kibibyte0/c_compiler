@@ -1,14 +1,13 @@
 use core::fmt;
-use std::ops::Range;
+use shared_context::Span;
+
+use shared_context::source_map::SourceMap;
 
 #[derive(Debug)]
 pub enum ErrorType {
-    DeclaredTwice {
-        first: Range<usize>,
-        second: Range<usize>,
-    },
-    UseOfUndeclared(Range<usize>),
-    InvalidLeftValue(Range<usize>),
+    DeclaredTwice { first: Span, second: Span },
+    UseOfUndeclared(Span),
+    InvalidLeftValue(Span),
 }
 
 #[derive(Debug)]
@@ -17,112 +16,43 @@ pub struct SemanticErr {
 }
 
 impl SemanticErr {
-    pub fn new(err: ErrorType, file_name: &str, source_code: &str) -> Self {
+    pub fn new(err: ErrorType, source_map: &SourceMap) -> Self {
         let formated_error = match err {
             ErrorType::DeclaredTwice { first, second } => {
-                Self::format_declared_twice_err(file_name, source_code, &first, &second)
+                Self::format_declared_twice_err(source_map, &first, &second)
             }
             ErrorType::UseOfUndeclared(span) => {
-                Self::format_use_of_undeclared_err(file_name, source_code, &span)
+                Self::format_use_of_undeclared_err(source_map, &span)
             }
             ErrorType::InvalidLeftValue(span) => {
-                Self::format_invalid_left_value_err(file_name, source_code, &span)
+                Self::format_invalid_left_value_err(source_map, &span)
             }
         };
 
         Self { formated_error }
     }
 
-    fn get_line_and_column(source_code: &str, offset: usize) -> (usize, usize) {
-        let mut line = 1;
-        let mut col = 1;
-
-        for (i, c) in source_code.chars().enumerate() {
-            if i == offset {
-                break;
-            }
-            if c == '\n' {
-                line += 1;
-                col = 1;
-            } else {
-                col += 1;
-            }
-        }
-
-        (line, col)
-    }
-
-    fn get_line_text(source_code: &str, offset: usize) -> &str {
-        let start = source_code[..offset].rfind('\n').map_or(0, |pos| pos + 1);
-        let end = source_code[offset..]
-            .find('\n')
-            .map_or(source_code.len(), |pos| offset + pos);
-
-        &source_code[start..end]
-    }
-
-    fn format_message(file_name: &str, source_code: &str, span: &Range<usize>) -> String {
-        let (line, col) = Self::get_line_and_column(source_code, span.start);
-        let line_text = Self::get_line_text(source_code, span.start);
-
-        let mut marker_line = String::new();
-        let marker_start = col.saturating_sub(1);
-        let marker_len = (span.end - span.start).max(1);
-
-        for i in 0..=line_text.len() {
-            if i == marker_start {
-                marker_line.push('^');
-                for _ in 1..marker_len {
-                    marker_line.push('~');
-                }
-                break;
-            } else if line_text.as_bytes()[i] == b'\t' {
-                marker_line.push('\t');
-            } else {
-                marker_line.push(' ');
-            }
-        }
-
-        format!(
-            "{} --> line {}:{}\n     |\n{:>4} | {}\n     | {}\n",
-            file_name, line, col, line, line_text, marker_line
-        )
-    }
-
-    fn format_declared_twice_err(
-        file_name: &str,
-        source_code: &str,
-        first: &Range<usize>,
-        second: &Range<usize>,
-    ) -> String {
+    fn format_declared_twice_err(source_map: &SourceMap, first: &Span, second: &Span) -> String {
         format!(
             "variable declared twice\n\
              first declaration:\n{}\
              second declaration:\n{}",
-            Self::format_message(file_name, source_code, first),
-            Self::format_message(file_name, source_code, second),
+            source_map.format_message("".to_string(), first.get_range()),
+            source_map.format_message("".to_string(), second.get_range()),
         )
     }
 
-    fn format_use_of_undeclared_err(
-        file_name: &str,
-        source_code: &str,
-        span: &Range<usize>,
-    ) -> String {
+    fn format_use_of_undeclared_err(source_map: &SourceMap, span: &Span) -> String {
         format!(
             "use of undeclared variable\n{}",
-            Self::format_message(file_name, source_code, span)
+            source_map.format_message("".to_string(), span.get_range())
         )
     }
 
-    fn format_invalid_left_value_err(
-        file_name: &str,
-        source_code: &str,
-        span: &Range<usize>,
-    ) -> String {
+    fn format_invalid_left_value_err(source_map: &SourceMap, span: &Span) -> String {
         format!(
             "invalid left-hand side of assignment\n{}",
-            Self::format_message(file_name, source_code, span)
+            source_map.format_message("".to_string(), span.get_range())
         )
     }
 }

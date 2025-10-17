@@ -1,5 +1,6 @@
 mod instructions;
 pub use instructions::{BinaryOP, Instruction, UnaryOP, Value};
+use shared_context::Identifier;
 
 pub struct Program {
     function: FunctionDef,
@@ -9,9 +10,6 @@ pub struct FunctionDef {
     name: Identifier,
     instructions: Vec<Instruction>,
 }
-
-#[derive(Clone)]
-pub struct Identifier(pub String);
 
 impl Program {
     pub fn new(function: FunctionDef) -> Self {

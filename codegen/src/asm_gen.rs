@@ -1,5 +1,4 @@
 use crate::AsmGen;
-use crate::asm::Instruction;
 use crate::{asm, asm::Operand, asm::Operand::Reg, asm::Register};
 use ir_gen::tacky;
 
@@ -15,71 +14,75 @@ impl AsmGen {
 
     fn gen_function_def(function: tacky::FunctionDef) -> asm::FunctionDef {
         let (name, tacky_instructions) = function.into_parts();
-        let mut function_instructions = Vec::new();
+        let mut asm_instructions = Vec::new();
 
         // this will work as a placeholder for the actual stack allocation instruction
         // in the register allocatation pass, it will get replaced by the real value
-        function_instructions.push(asm::Instruction::AllocateStack(0));
+        asm_instructions.push(asm::Instruction::AllocateStack(0));
 
-        // collect all the asm vectors in function_instructions
-        for instruction in tacky_instructions {
-            let mut new_instructions = Self::gen_instructions(instruction);
-            function_instructions.append(&mut new_instructions);
-        }
+        Self::gen_instructions(tacky_instructions, &mut asm_instructions);
 
-        asm::FunctionDef::new(asm::Identifier(name.0), function_instructions)
+        asm::FunctionDef::new(name, asm_instructions)
     }
 
     /// takes a tacky instruction and return a vector of the corresponding asm instructions
-    fn gen_instructions(tacky_instruction: tacky::Instruction) -> Vec<asm::Instruction> {
-        match tacky_instruction {
-            tacky::Instruction::Ret(val) => Self::handle_ret(val),
-            tacky::Instruction::Unary { op, src, dst } => Self::handle_unary(op, src, dst),
-            tacky::Instruction::Binary {
-                op,
-                src1,
-                src2,
-                dst,
-            } => Self::handle_binary(op, src1, src2, dst),
+    fn gen_instructions(
+        tacky_instructions: Vec<tacky::Instruction>,
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
+        for tacky_instruction in tacky_instructions {
+            match tacky_instruction {
+                tacky::Instruction::Ret(val) => Self::handle_ret(val, asm_instructions),
+                tacky::Instruction::Unary { op, src, dst } => {
+                    Self::handle_unary(op, src, dst, asm_instructions)
+                }
+                tacky::Instruction::Binary {
+                    op,
+                    src1,
+                    src2,
+                    dst,
+                } => Self::handle_binary(op, src1, src2, dst, asm_instructions),
 
-            tacky::Instruction::Jump(tar) => Self::handle_jump(tar),
-            tacky::Instruction::JumpIfZero(pred, tar) => Self::handle_jump_if_zero(pred, tar),
-            tacky::Instruction::JumpIfNotZero(pred, tar) => {
-                Self::handle_jump_if_not_zero(pred, tar)
+                tacky::Instruction::Jump(tar) => Self::handle_jump(tar, asm_instructions),
+                tacky::Instruction::JumpIfZero(pred, tar) => {
+                    Self::handle_jump_if_zero(pred, tar, asm_instructions)
+                }
+                tacky::Instruction::JumpIfNotZero(pred, tar) => {
+                    Self::handle_jump_if_not_zero(pred, tar, asm_instructions)
+                }
+                tacky::Instruction::Label(tar) => Self::handle_label(tar, asm_instructions),
+
+                tacky::Instruction::Copy { src, dst } => {
+                    Self::handle_copy(src, dst, asm_instructions)
+                }
             }
-            tacky::Instruction::Label(tar) => Self::handle_label(tar),
-
-            tacky::Instruction::Copy { src, dst } => Self::handle_copy(src, dst),
         }
     }
 
-    fn handle_ret(val: tacky::Value) -> Vec<asm::Instruction> {
-        let mut new_instructions = Vec::new();
-        new_instructions.push(asm::Instruction::Mov {
+    fn handle_ret(val: tacky::Value, asm_instructions: &mut Vec<asm::Instruction>) {
+        asm_instructions.push(asm::Instruction::Mov {
             dst: Reg(Register::AX),
-            src: Self::convert_val(&val),
+            src: Self::convert_val(val),
         });
-        new_instructions.push(asm::Instruction::Ret);
-
-        new_instructions
+        asm_instructions.push(asm::Instruction::Ret);
     }
 
-    fn handle_copy(src: tacky::Value, dst: tacky::Value) -> Vec<Instruction> {
-        let mut new_instructions = Vec::new();
-
-        new_instructions.push(asm::Instruction::Mov {
-            src: Self::convert_val(&src),
-            dst: Self::convert_val(&dst),
+    fn handle_copy(
+        src: tacky::Value,
+        dst: tacky::Value,
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
+        asm_instructions.push(asm::Instruction::Mov {
+            src: Self::convert_val(src),
+            dst: Self::convert_val(dst),
         });
-
-        new_instructions
     }
 
-    fn convert_val(val: &tacky::Value) -> Operand {
+    fn convert_val(val: tacky::Value) -> Operand {
         match val {
-            tacky::Value::Var(identifier) => Operand::Pseudo(asm::Identifier(identifier.0.clone())),
+            tacky::Value::Var(identifier) => Operand::Pseudo(identifier),
 
-            tacky::Value::Constant(int) => Operand::Immediate(*int),
+            tacky::Value::Constant(int) => Operand::Immediate(int),
         }
     }
 }
