@@ -4,9 +4,10 @@ use parser::ast::*;
 use shared_context::{CompilerContext, Identifier};
 
 mod resolve_expressions;
+mod resolve_statements;
 
-impl<'a, 'c> VariableResolver<'a, 'c> {
-    pub fn new(compiler_ctx: &'c CompilerContext<'a>) -> Self {
+impl<'src, 'c> VariableResolver<'src, 'c> {
+    pub fn new(compiler_ctx: &'c CompilerContext<'src>) -> Self {
         Self {
             compiler_ctx,
             variable_counter: 0,
@@ -53,15 +54,15 @@ impl<'a, 'c> VariableResolver<'a, 'c> {
         resolver_ctx.create_scope();
 
         let (block_items, span) = block.into_parts();
-        let mut resolved_body = Vec::new();
+        let mut resolved_block = Vec::new();
         for item in block_items {
             let resolved_item = self.resolve_block_item(item, resolver_ctx)?;
-            resolved_body.push(resolved_item);
+            resolved_block.push(resolved_item);
         }
 
         resolver_ctx.delete_scope();
 
-        Ok(Block::new(resolved_body, span))
+        Ok(Block::new(resolved_block, span))
     }
 
     fn resolve_block_item(
@@ -82,7 +83,8 @@ impl<'a, 'c> VariableResolver<'a, 'c> {
         resolver_ctx: &mut ResolverContext,
     ) -> Result<Declaration, ErrorType> {
         let (name, mut init, span) = decl.into_parts();
-        let (symbol, _, name_span) = name.into_parts();
+        let (identifier, name_span) = name.into_parts();
+        let symbol = identifier.get_symbol();
 
         if let Some(id) = resolver_ctx.search_current_scope(&symbol) {
             return Err(ErrorType::DeclaredTwice {
@@ -92,7 +94,8 @@ impl<'a, 'c> VariableResolver<'a, 'c> {
         }
 
         let count = self.get_var_count_and_increment();
-        let resolved_name = Identifier::new(symbol, count, name_span);
+        let resolved_identifier = Identifier::new(symbol, count);
+        let resolved_name = SpannedIdentifier::new(resolved_identifier, name_span);
 
         resolver_ctx.insert_variable(symbol, resolved_name);
 
@@ -101,61 +104,5 @@ impl<'a, 'c> VariableResolver<'a, 'c> {
         }
 
         Ok(Declaration::new(resolved_name, init, span))
-    }
-
-    fn resolve_statement(
-        &mut self,
-        stmt: Statement,
-        resolver_ctx: &mut ResolverContext,
-    ) -> Result<Statement, ErrorType> {
-        let (stmt_type, span) = stmt.into_parts();
-
-        let resolved_stmt_type = match stmt_type {
-            StatementType::Return(expr) => {
-                let expr = self.resolve_expression(expr, resolver_ctx)?;
-                StatementType::Return(expr)
-            }
-            StatementType::ExprStatement(expr) => {
-                let expr = self.resolve_expression(expr, resolver_ctx)?;
-                StatementType::ExprStatement(expr)
-            }
-            StatementType::Compound(sp_block) => {
-                StatementType::Compound(self.resolve_block(sp_block, resolver_ctx)?)
-            }
-
-            StatementType::IfStatement {
-                condition,
-                if_clause,
-                else_clause,
-            } => {
-                self.resolve_if_statement_type(condition, *if_clause, else_clause, resolver_ctx)?
-            }
-            StatementType::Null => StatementType::Null,
-        };
-
-        Ok(Statement::new(resolved_stmt_type, span))
-    }
-
-    fn resolve_if_statement_type(
-        &mut self,
-        condition: Expression,
-        if_clause: Statement,
-        else_clause: Option<Box<Statement>>,
-        resolver_ctx: &mut ResolverContext,
-    ) -> Result<StatementType, ErrorType> {
-        let condition = self.resolve_expression(condition, resolver_ctx)?;
-        let if_clause = Box::new(self.resolve_statement(if_clause, resolver_ctx)?);
-
-        let else_clause = if let Some(clause) = else_clause {
-            Some(Box::new(self.resolve_statement(*clause, resolver_ctx)?))
-        } else {
-            None
-        };
-
-        Ok(StatementType::IfStatement {
-            condition,
-            if_clause,
-            else_clause,
-        })
     }
 }

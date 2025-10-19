@@ -11,7 +11,7 @@ pub struct ParseErr {
 impl ParseErr {
     pub fn new(message: String, token: &SpannedToken, source_map: &SourceMap) -> Self {
         Self {
-            formated_error: source_map.format_message(message, token.get_span().clone()),
+            formated_error: source_map.format_message(message, token.get_span(), token.get_line()),
         }
     }
 

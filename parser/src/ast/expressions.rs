@@ -1,4 +1,4 @@
-use crate::ast::{Identifier, Span};
+use crate::ast::{Span, SpannedIdentifier};
 
 #[derive(Debug)]
 pub struct Expression {
@@ -23,7 +23,7 @@ pub enum ExpressionType {
         cons: Box<Expression>,
         alt: Box<Expression>,
     },
-    Var(Identifier),
+    Var(SpannedIdentifier),
     Assignment {
         lvalue: Box<Expression>,
         rvalue: Box<Expression>,

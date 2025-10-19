@@ -1,27 +1,30 @@
 use crate::ast::BinaryOP;
 use crate::ast::Expression;
 use crate::ast::ExpressionType;
+use crate::ast::Span;
 use crate::ast::UnaryOP;
 use crate::parser::ParseErr;
 use crate::parser::Parser;
 use lexer::token::Token;
-use shared_context::Span;
+
+mod parse_factor;
 
 impl<'a, 'c> Parser<'a, 'c> {
     pub(crate) fn parse_expression(&mut self, min_prec: usize) -> Result<Expression, ParseErr> {
+        let line = self.peek()?.get_line();
         let mut span_start = self.peek()?.get_span().start;
         let mut left = self.parse_factor()?;
 
         let mut next_token = self.peek()?.get_token();
         while next_token.is_binary() && next_token.precedence() >= min_prec {
             if next_token == Token::Assignment {
-                left = self.parse_assignment(left, next_token.precedence(), span_start)?;
+                left = self.handle_assignment(left, next_token.precedence(), span_start, line)?;
                 span_start = self.peek()?.get_span().start;
             } else if next_token == Token::QuestionMark {
-                left = self.parse_conditional(left, next_token.precedence(), span_start)?;
+                left = self.handle_conditional(left, next_token.precedence(), span_start, line)?;
                 span_start = self.peek()?.get_span().start;
             } else {
-                left = self.parse_binary(left, next_token.precedence(), span_start)?;
+                left = self.handle_binary(left, next_token.precedence(), span_start, line)?;
                 span_start = self.peek()?.get_span().start;
             }
             next_token = self.peek()?.get_token();
@@ -30,48 +33,20 @@ impl<'a, 'c> Parser<'a, 'c> {
         Ok(left)
     }
 
-    fn parse_factor(&mut self) -> Result<Expression, ParseErr> {
-        let start = self.peek()?.get_span().start;
-        let next_token = self.peek()?;
-
-        if next_token.get_token() == Token::ConstantInt {
-            self.parse_constant_int()
-        } else if next_token.get_token().is_unary() {
-            let op = self.parse_unary_op()?;
-            let inner_exp = self.parse_factor()?;
-            let end = self.current_token.get_span().end;
-
-            let expr_type = ExpressionType::Unary {
-                operator: op,
-                operand: Box::new(inner_exp),
-            };
-            let span = Span::new(start, end);
-            Ok(Expression::new(expr_type, span))
-        } else if next_token.get_token() == Token::LeftParenthesis {
-            self.advance()?; // consume the '('token
-            let inner_exp = self.parse_expression(0);
-            self.expect_token(")")?;
-            inner_exp
-        } else if next_token.get_token() == Token::Identifier {
-            let id = self.parse_identifier()?;
-            let end = self.current_token.get_span().end;
-            let span = Span::new(start, end);
-            let expr_type = ExpressionType::Var(id);
-            Ok(Expression::new(expr_type, span))
-        } else {
-            Err(ParseErr::new(
-                String::from("invald expression"),
-                &next_token,
-                &self.ctx.source_map,
-            ))
+    pub(crate) fn parse_optional_expr(&mut self) -> Result<Option<Expression>, ParseErr> {
+        let next_token = self.peek()?.get_token();
+        match next_token {
+            Token::RightParenthesis | Token::Semicolon => Ok(None),
+            _ => Ok(Some(self.parse_expression(0)?)),
         }
     }
 
-    fn parse_assignment(
+    fn handle_assignment(
         &mut self,
         left: Expression,
         token_precedence: usize,
         start: usize,
+        line: usize,
     ) -> Result<Expression, ParseErr> {
         self.advance()?; // consume the '=' token
         let right = self.parse_expression(token_precedence)?;
@@ -80,15 +55,16 @@ impl<'a, 'c> Parser<'a, 'c> {
             rvalue: Box::new(right),
         };
         let end = self.current_token.get_span().end;
-        let span = Span::new(start, end);
+        let span = Span::new(start, end, line);
         Ok(Expression::new(expr_type, span))
     }
 
-    fn parse_conditional(
+    fn handle_conditional(
         &mut self,
         left: Expression,
         token_precedence: usize,
         start: usize,
+        line: usize,
     ) -> Result<Expression, ParseErr> {
         let middle = self.parse_conditional_middle()?;
         let right = self.parse_expression(token_precedence)?;
@@ -98,7 +74,7 @@ impl<'a, 'c> Parser<'a, 'c> {
             alt: Box::new(right),
         };
         let end = self.current_token.get_span().end;
-        let span = Span::new(start, end);
+        let span = Span::new(start, end, line);
         Ok(Expression::new(expr_type, span))
     }
 
@@ -106,15 +82,16 @@ impl<'a, 'c> Parser<'a, 'c> {
     fn parse_conditional_middle(&mut self) -> Result<Expression, ParseErr> {
         self.advance()?; // consume the '?' token
         let exp = self.parse_expression(0)?;
-        self.expect_token(":")?;
+        self.expect_token(Token::Colon)?;
         Ok(exp)
     }
 
-    fn parse_binary(
+    fn handle_binary(
         &mut self,
         left: Expression,
         token_precedence: usize,
         start: usize,
+        line: usize,
     ) -> Result<Expression, ParseErr> {
         let op = self.parse_binary_op()?;
         let right = self.parse_expression(token_precedence + 1)?;
@@ -124,7 +101,7 @@ impl<'a, 'c> Parser<'a, 'c> {
             operand2: Box::new(right),
         };
         let end = self.current_token.get_span().end;
-        let span = Span::new(start, end);
+        let span = Span::new(start, end, line);
         Ok(Expression::new(expr_type, span))
     }
 
@@ -173,32 +150,6 @@ impl<'a, 'c> Parser<'a, 'c> {
                 &token,
                 &self.ctx.source_map,
             )),
-        }
-    }
-
-    // parse integer literals
-    fn parse_constant_int(&mut self) -> Result<Expression, ParseErr> {
-        let start = self.peek()?.get_span().start;
-        let token = self.advance()?;
-
-        if token.get_token() == Token::ConstantInt {
-            let value = token.get_lexeme().parse::<i32>().map_err(|_| {
-                ParseErr::new(
-                    "failed to parse integer constant".to_string(),
-                    &token,
-                    &self.ctx.source_map,
-                )
-            })?;
-            let expr_type = ExpressionType::Constant(value);
-            let end = self.current_token.get_span().end;
-            let span = Span::new(start, end);
-            Ok(Expression::new(expr_type, span))
-        } else {
-            Err(ParseErr::expected(
-                "integer constant",
-                &token,
-                &self.ctx.source_map,
-            ))
         }
     }
 }

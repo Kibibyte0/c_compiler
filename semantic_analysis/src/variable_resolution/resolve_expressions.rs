@@ -2,7 +2,6 @@ use super::ResolverContext;
 use crate::VariableResolver;
 use crate::semantic_error::ErrorType;
 use parser::ast::*;
-use shared_context::Identifier;
 
 impl<'a, 'c> VariableResolver<'a, 'c> {
     pub(super) fn resolve_expression(
@@ -33,6 +32,17 @@ impl<'a, 'c> VariableResolver<'a, 'c> {
         Ok(Expression::new(resolved_expr_type, span))
     }
 
+    pub(crate) fn resolve_optional_expr(
+        &mut self,
+        optional_expr: Option<Expression>,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<Option<Expression>, ErrorType> {
+        match optional_expr {
+            Some(expr) => Ok(Some(self.resolve_expression(expr, resolver_ctx)?)),
+            None => Ok(None),
+        }
+    }
+
     fn resolve_assignment(
         &mut self,
         lvalue: Expression,
@@ -54,14 +64,14 @@ impl<'a, 'c> VariableResolver<'a, 'c> {
 
     fn resolve_variable(
         &mut self,
-        name: Identifier,
+        name: SpannedIdentifier,
         resolver_ctx: &ResolverContext,
     ) -> Result<ExpressionType, ErrorType> {
-        let symbol = name.get_symbol();
+        let (identifier, span) = name.into_parts();
+        let symbol = identifier.get_symbol();
         if let Some(id) = resolver_ctx.search_scope(&symbol) {
             Ok(ExpressionType::Var(id))
         } else {
-            let (_, _, span) = name.into_parts();
             Err(ErrorType::UseOfUndeclared(span))
         }
     }
