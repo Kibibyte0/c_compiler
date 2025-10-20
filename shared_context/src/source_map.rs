@@ -13,9 +13,9 @@ impl<'a> SourceMap<'a> {
         }
     }
 
-    pub fn format_message(&self, message: String, span: Range<usize>) -> String {
+    pub fn format_message(&self, message: String, span: Range<usize>, line: usize) -> String {
         let line_text = self.get_line_text(span.start);
-        let (line, column) = self.get_line_and_column(span.start);
+        let column = self.get_col_number(span.start);
 
         let mut marker_line = String::new();
         let marker_start = column.saturating_sub(1);
@@ -54,23 +54,17 @@ impl<'a> SourceMap<'a> {
         &self.source_code[start..end]
     }
 
-    fn get_line_and_column(&self, offset: usize) -> (usize, usize) {
-        let mut line = 1;
-        let mut col = 1;
+    fn get_col_number(&self, offset: usize) -> usize {
+        let source = self.get_source_code();
+        let last_newline_index = source[..offset]
+            .char_indices()
+            .rfind(|&(_, ch)| ch == '\n')
+            .map(|(index, _)| index)
+            .unwrap_or(0);
 
-        for (i, c) in self.source_code.chars().enumerate() {
-            if i == offset {
-                break;
-            }
-            if c == '\n' {
-                line += 1;
-                col = 1;
-            } else {
-                col += 1;
-            }
-        }
+        let col = source[last_newline_index..offset].len();
 
-        (line, col)
+        col
     }
 
     pub fn get_file_name(&self) -> &'a str {

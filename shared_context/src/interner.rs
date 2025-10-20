@@ -2,7 +2,7 @@ use bumpalo::Bump;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Symbol(u32);
+pub struct Symbol(pub(crate) usize);
 
 pub struct Interner<'a> {
     arena: &'a Bump,
@@ -12,10 +12,14 @@ pub struct Interner<'a> {
 
 impl<'a> Interner<'a> {
     pub fn new(arena: &'a Bump) -> Self {
+        // reserve the first position for a default value
+        let mut vec = Vec::new();
+        vec.push("default");
+
         Self {
             arena,
             map: HashMap::new(),
-            vec: Vec::new(),
+            vec,
         }
     }
 
@@ -24,7 +28,7 @@ impl<'a> Interner<'a> {
             return sym;
         }
 
-        let sym = Symbol(self.vec.len() as u32);
+        let sym = Symbol(self.vec.len());
 
         // Allocate the string in the bump arena
         let stored: &'a str = self.arena.alloc_str(s);
@@ -36,6 +40,6 @@ impl<'a> Interner<'a> {
     }
 
     pub fn lookup(&self, sym: Symbol) -> &'a str {
-        self.vec[sym.0 as usize]
+        self.vec[sym.0]
     }
 }

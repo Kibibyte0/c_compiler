@@ -2,7 +2,6 @@ use crate::interner::Interner;
 use crate::source_map::SourceMap;
 pub use bumpalo::Bump;
 use interner::Symbol;
-use std::ops::Range;
 
 pub mod interner;
 pub mod source_map;
@@ -28,48 +27,30 @@ impl<'a> CompilerContext<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Span {
-    start: usize,
-    end: usize,
-}
-
-impl Span {
-    pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
-    }
-
-    pub fn get_range(&self) -> Range<usize> {
-        self.start..self.end
-    }
-}
-
-impl Default for Span {
-    fn default() -> Self {
-        Self { start: 0, end: 0 }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Identifier {
     symbol: Symbol,
     id: usize,
-    span: Span,
 }
 
 impl Identifier {
-    pub fn new(symbol: Symbol, id: usize, span: Span) -> Self {
-        Self { symbol, id, span }
+    pub fn new(symbol: Symbol, id: usize) -> Self {
+        Self { symbol, id }
     }
 
     pub fn get_symbol(&self) -> Symbol {
         self.symbol
     }
 
-    pub fn get_span(&self) -> Span {
-        self.span.clone()
+    pub fn into_parts(self) -> (Symbol, usize) {
+        (self.symbol, self.id)
     }
+}
 
-    pub fn into_parts(self) -> (Symbol, usize, Span) {
-        (self.symbol, self.id, self.span)
+impl Default for Identifier {
+    fn default() -> Self {
+        Self {
+            symbol: Symbol(0),
+            id: 0,
+        }
     }
 }
