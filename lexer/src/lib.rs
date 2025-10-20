@@ -10,6 +10,7 @@ pub struct SpannedToken<'a> {
     token: Token,
     lexeme: &'a str,
     span: Range<usize>,
+    line: usize,
 }
 
 impl<'a> Default for SpannedToken<'a> {
@@ -18,16 +19,18 @@ impl<'a> Default for SpannedToken<'a> {
             token: Token::Skip,
             lexeme: "",
             span: Range { start: 0, end: 0 },
+            line: 0,
         }
     }
 }
 
 impl<'a> SpannedToken<'a> {
-    pub fn new(token: Token, lexeme: &'a str, span: Range<usize>) -> Self {
+    pub fn new(token: Token, lexeme: &'a str, span: Range<usize>, line: usize) -> Self {
         Self {
             token,
             lexeme,
             span,
+            line,
         }
     }
 
@@ -41,6 +44,10 @@ impl<'a> SpannedToken<'a> {
 
     pub fn get_lexeme(&self) -> &'a str {
         self.lexeme
+    }
+
+    pub fn get_line(&self) -> usize {
+        self.line
     }
 }
 
@@ -56,18 +63,18 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next(&mut self) -> Option<SpannedToken<'a>> {
-        loop {
-            let token = match self.lex.next()? {
-                Ok(tok) => tok,
-                Err(_) => Token::Error,
-            };
+        let token = match self.lex.next()? {
+            Ok(tok) => tok,
+            Err(_) => Token::Error,
+        };
 
-            match token {
-                Token::Skip => continue,
-                _ => {
-                    return Some(SpannedToken::new(token, self.lex.slice(), self.lex.span()));
-                }
-            }
-        }
+        let line = self.lex.extras.line;
+
+        Some(SpannedToken::new(
+            token,
+            self.lex.slice(),
+            self.lex.span(),
+            line,
+        ))
     }
 }
