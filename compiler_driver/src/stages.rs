@@ -32,9 +32,9 @@ pub fn parser_stage(file_path: &str, file_name: &str) -> Result<(), Box<dyn Erro
     let arena = Bump::new();
     let mut ctx = CompilerContext::new(&arena, file_name, &input_string);
     let program_ast = parse(lexer, &mut ctx)?;
-    let (analized_program, _) = analize(&ctx, program_ast)?;
+    let (analized_program, _) = analize(&mut ctx, program_ast)?;
 
-    parser::print_ast::DebuggingPrinter::new(&ctx.interner).print(analized_program);
+    parser::print_ast::DebugTreePrinter::new(&ctx.interner).print(analized_program);
 
     Ok(())
 }
@@ -46,7 +46,7 @@ pub fn tacky_stage(file_path: &str, file_name: &str) -> Result<(), Box<dyn Error
     let arena = Bump::new();
     let mut ctx = CompilerContext::new(&arena, file_name, &input_string);
     let program_ast = parse(lexer, &mut ctx)?;
-    let (analized_program, counter) = analize(&ctx, program_ast)?;
+    let (analized_program, counter) = analize(&mut ctx, program_ast)?;
 
     let mut ir_gen = ir_gen::IRgen::new(counter, &mut ctx.interner);
     let program_tacky = ir_gen.gen_tacky(analized_program);
@@ -62,7 +62,7 @@ pub fn codegen_stage(file_path: &str, file_name: &str) -> Result<(), Box<dyn Err
     let arena = Bump::new();
     let mut ctx = CompilerContext::new(&arena, file_name, &input_string);
     let program_ast = parse(lexer, &mut ctx)?;
-    let (analized_program, counter) = analize(&ctx, program_ast)?;
+    let (analized_program, counter) = analize(&mut ctx, program_ast)?;
 
     let mut ir_gen = ir_gen::IRgen::new(counter, &mut ctx.interner);
     let program_tacky = ir_gen.gen_tacky(analized_program);
@@ -86,7 +86,7 @@ pub fn emit_assembly(file_path: &str, file_name: &str) -> Result<String, Box<dyn
     let arena = Bump::new();
     let mut ctx = CompilerContext::new(&arena, file_name, &input_string);
     let program_ast = parse(lexer, &mut ctx)?;
-    let (analized_program, counter) = analize(&ctx, program_ast)?;
+    let (analized_program, counter) = analize(&mut ctx, program_ast)?;
 
     let mut ir_gen = ir_gen::IRgen::new(counter, &mut ctx.interner);
     let program_tacky = ir_gen.gen_tacky(analized_program);

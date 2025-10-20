@@ -6,7 +6,7 @@ use std::process::Command;
 pub fn pre_process_file(file_path: &str) -> String {
     let pre_processed_file = set_file_name(file_path, "pre_process.i");
     Command::new("gcc")
-        .args(["-E", "-P", file_path, "-o", &pre_processed_file])
+        .args(["-E", file_path, "-o", &pre_processed_file])
         .output()
         .expect("failed to pre-process the program");
     pre_processed_file
