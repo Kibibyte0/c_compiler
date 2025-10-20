@@ -24,7 +24,7 @@ impl<'a, 'b> IRgen<'a, 'b> {
                 operand1,
                 operand2,
             } => self.gen_binary_expr(operator, *operand1, *operand2, instructions),
-            ast::ExpressionType::Var(name) => tacky::Value::Var(name),
+            ast::ExpressionType::Var(name) => tacky::Value::Var(name.get_identifier()),
             ast::ExpressionType::Assignment { lvalue, rvalue } => {
                 self.gen_assignment(*lvalue, *rvalue, instructions)
             }

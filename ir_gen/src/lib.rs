@@ -1,6 +1,6 @@
 pub mod tacky;
-use parser::ast::{self};
-use shared_context::{Identifier, Span, interner::Interner};
+use parser::ast;
+use shared_context::{Identifier, interner::Interner};
 
 mod gen_expressions;
 mod gen_statements;
@@ -24,7 +24,7 @@ impl<'a, 'b> IRgen<'a, 'b> {
         let s = format!("tmp.{}", self.var_counter);
         self.var_counter += 1;
         let symbol = self.interner.intern(&s);
-        let temp_id = Identifier::new(symbol, 0, Span::default());
+        let temp_id = Identifier::new(symbol, 0);
         tacky::Value::Var(temp_id)
     }
 
@@ -33,7 +33,19 @@ impl<'a, 'b> IRgen<'a, 'b> {
         let s = format!("label_{}", self.var_counter);
         self.var_counter += 1;
         let symbol = self.interner.intern(&s);
-        Identifier::new(symbol, 0, Span::default())
+        Identifier::new(symbol, 0)
+    }
+
+    fn convert_to_break_label(&mut self, label: Identifier) -> Identifier {
+        let symbol = label.get_symbol();
+        let s = format!("{}_break", self.interner.lookup(symbol));
+        Identifier::new(self.interner.intern(&s), 0)
+    }
+
+    fn convert_to_continue_label(&mut self, label: Identifier) -> Identifier {
+        let symbol = label.get_symbol();
+        let s = format!("{}_continue", self.interner.lookup(symbol));
+        Identifier::new(self.interner.intern(&s), 0)
     }
 
     pub fn gen_tacky(&mut self, program: ast::Program) -> tacky::Program {
@@ -45,7 +57,7 @@ impl<'a, 'b> IRgen<'a, 'b> {
         let (name, block, _) = function.into_parts();
         let mut instructions: Vec<tacky::Instruction> = Vec::new();
         self.gen_function_block(block, &mut instructions);
-        tacky::FunctionDef::new(name, instructions)
+        tacky::FunctionDef::new(name.get_identifier(), instructions)
     }
 
     /// gen function block will add return 0 by default
@@ -87,7 +99,7 @@ impl<'a, 'b> IRgen<'a, 'b> {
                 let value = self.gen_expression(init, instructions);
                 let instr = tacky::Instruction::Copy {
                     src: value,
-                    dst: tacky::Value::Var(name),
+                    dst: tacky::Value::Var(name.get_identifier()),
                 };
                 instructions.push(instr);
             }

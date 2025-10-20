@@ -13,7 +13,7 @@ impl<'a, 'b> IRgen<'a, 'b> {
     }
 
     fn format_identifier(&self, identifier: Identifier) -> String {
-        let (symbol, id, _) = identifier.into_parts();
+        let (symbol, id) = identifier.into_parts();
         format!("{}.{}", self.interner.lookup(symbol), id)
     }
 
