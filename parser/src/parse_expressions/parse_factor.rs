@@ -1,5 +1,5 @@
 use crate::ast::{Expression, ExpressionType, Span};
-use crate::parser::{ParseErr, Parser};
+use crate::{ParseErr, Parser};
 use lexer::token::Token;
 
 impl<'a, 'b> Parser<'a, 'b> {

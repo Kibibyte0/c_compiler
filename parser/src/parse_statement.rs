@@ -1,6 +1,6 @@
+use crate::ParseErr;
+use crate::Parser;
 use crate::ast::{ForInit, Span, Statement, StatementType};
-use crate::parser::ParseErr;
-use crate::parser::Parser;
 use lexer::token::Token;
 use shared_context::Identifier;
 

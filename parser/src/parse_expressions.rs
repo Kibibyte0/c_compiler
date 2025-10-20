@@ -1,10 +1,10 @@
+use crate::ParseErr;
+use crate::Parser;
 use crate::ast::BinaryOP;
 use crate::ast::Expression;
 use crate::ast::ExpressionType;
 use crate::ast::Span;
 use crate::ast::UnaryOP;
-use crate::parser::ParseErr;
-use crate::parser::Parser;
 use lexer::token::Token;
 
 mod parse_factor;
