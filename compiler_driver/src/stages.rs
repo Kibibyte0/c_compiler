@@ -1,6 +1,5 @@
 use crate::files::*;
-use codegen::DebuggingPrinter;
-use codegen::{self, AsmGen, InstructionFix, RegisterAllocation};
+use codegen::{DebuggingPrinter, codegen};
 use emitter::Emitter;
 use parser::{self, parse};
 use semantic_analysis::analize;
@@ -26,6 +25,19 @@ pub fn lexer_stage(file_path: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn parser_stage(file_path: &str, file_name: &str) -> Result<(), Box<dyn Error>> {
+    let input_string = fs::read_to_string(&file_path)?;
+
+    let lexer = lexer::Lexer::new(&input_string);
+    let arena = Bump::new();
+    let mut ctx = CompilerContext::new(&arena, file_name, &input_string);
+    let program_ast = parse(lexer, &mut ctx)?;
+
+    parser::print_ast::DebugTreePrinter::new(&ctx.interner).print(program_ast);
+
+    Ok(())
+}
+
+pub fn validate_stage(file_path: &str, file_name: &str) -> Result<(), Box<dyn Error>> {
     let input_string = fs::read_to_string(&file_path)?;
 
     let lexer = lexer::Lexer::new(&input_string);
@@ -66,13 +78,7 @@ pub fn codegen_stage(file_path: &str, file_name: &str) -> Result<(), Box<dyn Err
 
     let mut ir_gen = ir_gen::IRgen::new(counter, &mut ctx.interner);
     let program_tacky = ir_gen.gen_tacky(analized_program);
-
-    let mut program_asm = AsmGen::gen_asm(program_tacky);
-
-    let mut codegen = RegisterAllocation::new();
-    codegen.allocate_registers(&mut program_asm);
-
-    InstructionFix::fix_instructions(&mut program_asm);
+    let program_asm = codegen(program_tacky);
     let asm_printer = DebuggingPrinter::new(&ctx.interner);
     asm_printer.print(program_asm);
 
@@ -91,16 +97,12 @@ pub fn emit_assembly(file_path: &str, file_name: &str) -> Result<String, Box<dyn
     let mut ir_gen = ir_gen::IRgen::new(counter, &mut ctx.interner);
     let program_tacky = ir_gen.gen_tacky(analized_program);
 
-    let mut program_asm = AsmGen::gen_asm(program_tacky);
-
-    let mut codegen = RegisterAllocation::new();
-    codegen.allocate_registers(&mut program_asm);
-
-    InstructionFix::fix_instructions(&mut program_asm);
+    let program_asm = codegen(program_tacky);
 
     let asm_file_name = format!("{}.s", remove_file_extension(file_name));
     let output_path = set_file_name(file_path, &asm_file_name);
-    Emitter::new(12, 16, 2, &ctx.interner).write_program(program_asm, &output_path)?;
+    Emitter::new(12, 16, 2, &ctx.interner, &ctx.symbol_table)
+        .write_program(program_asm, &output_path)?;
 
     Ok(output_path)
 }

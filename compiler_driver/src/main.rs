@@ -13,6 +13,7 @@ enum Stage {
     Codegen,
     Validate,
     Asm,
+    Obj,
     None,
 }
 
@@ -36,6 +37,9 @@ struct Cli {
     #[arg(long, group = "stage")]
     asm: bool,
 
+    #[arg(short = 'c', group = "stage")]
+    obj: bool,
+
     file_path: String,
 }
 
@@ -53,6 +57,8 @@ impl Cli {
             Stage::Validate
         } else if self.asm {
             Stage::Asm
+        } else if self.obj {
+            Stage::Obj
         } else {
             Stage::None
         }
@@ -74,13 +80,10 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     match arg.selected_stage() {
         Stage::Lex => lexer_stage(&file_path)?,
-
-        Stage::Parse | Stage::Validate => parser_stage(&file_path, file_name)?,
-
+        Stage::Parse => parser_stage(&file_path, file_name)?,
+        Stage::Validate => validate_stage(&file_path, file_name)?,
         Stage::Tacky => tacky_stage(&file_path, file_name)?,
-
         Stage::Codegen => codegen_stage(&file_path, file_name)?,
-
         Stage::Asm => {
             emit_assembly(&file_path, file_name)?;
             ()
@@ -89,7 +92,18 @@ fn run() -> Result<(), Box<dyn Error>> {
         // produce exe files
         Stage::None => {
             let output_file_path = emit_assembly(&file_path, file_name)?;
-            compile_assembly_file(&output_file_path, remove_file_extension(&arg.file_path));
+            compile_and_link_assembly_file(
+                &output_file_path,
+                remove_file_extension(&arg.file_path),
+            );
+            delete_file(&output_file_path);
+        }
+
+        // produce obj files
+        Stage::Obj => {
+            let output_file_path = emit_assembly(&file_path, file_name)?;
+            let obj_file_path = format!("{}.o", remove_file_extension(&arg.file_path));
+            compile_assembly_file(&output_file_path, &obj_file_path);
             delete_file(&output_file_path);
         }
     };
