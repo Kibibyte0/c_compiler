@@ -1,38 +1,38 @@
+use super::Token;
 use std::fmt;
 
-use super::Token;
-
 impl Token {
+    /// Returns `true` if this token represents a unary operator.
     pub fn is_unary(&self) -> bool {
-        match self {
-            Token::Neg | Token::Not | Token::LogicalNot => true,
-            _ => false,
-        }
+        matches!(self, Token::Neg | Token::Not | Token::LogicalNot)
     }
 
+    /// Returns `true` if this token represents a binary operator.
     pub fn is_binary(&self) -> bool {
-        match self {
-            // arithmatic
+        matches!(
+            self,
+            // Arithmetic
             Token::Add
-            | Token::Neg
-            | Token::Mul
-            | Token::Div
-            | Token::Mod
-            // logical
-            | Token::LogicalAnd
-            | Token::LogicalOr
-            | Token::Equal
-            | Token::NotEqual
-            | Token::LessThan
-            | Token::GreaterThan
-            | Token::LessThanOrEq
-            | Token::GreaterThanOrEq
-            | Token::Assignment
-            | Token::QuestionMark => true,
-            _ => false,
-        }
+                | Token::Neg
+                | Token::Mul
+                | Token::Div
+                | Token::Mod
+                // Logical and comparison
+                | Token::LogicalAnd
+                | Token::LogicalOr
+                | Token::Equal
+                | Token::NotEqual
+                | Token::LessThan
+                | Token::GreaterThan
+                | Token::LessThanOrEq
+                | Token::GreaterThanOrEq
+                // Assignment and ternary
+                | Token::Assignment
+                | Token::QuestionMark
+        )
     }
 
+    /// Returns the operator precedence value (higher = binds more tightly).
     pub fn precedence(&self) -> usize {
         match self {
             Token::Mul | Token::Div | Token::Mod => 50,
@@ -50,6 +50,9 @@ impl Token {
     }
 }
 
+/// Pretty-print each token in human-readable form.
+///
+/// This is used for debugging and displaying tokens in error messages.
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -91,7 +94,7 @@ impl fmt::Display for Token {
             Token::LessThanOrEq => write!(f, "<="),
             Token::GreaterThanOrEq => write!(f, ">="),
 
-            // Bitwise operators
+            // Bitwise
             Token::Not => write!(f, "~"),
 
             // Symbols
@@ -102,8 +105,9 @@ impl fmt::Display for Token {
             Token::Semicolon => write!(f, ";"),
             Token::Colon => write!(f, ":"),
             Token::QuestionMark => write!(f, "?"),
+            Token::Comma => write!(f, ","),
 
-            // Skip and Error
+            // Skipped, line directive, or invalid
             Token::Skip => write!(f, "<skip>"),
             Token::Error => write!(f, "<error>"),
             Token::LineDirective => write!(f, "<#line>"),
