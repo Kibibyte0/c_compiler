@@ -24,15 +24,35 @@ impl<'a> Emitter<'a> {
     pub(crate) fn convert_register(register: asm::Register, reg_size: usize) -> String {
         match reg_size {
             1 => Self::convert_1_byte_reg(register),
+            8 => Self::convert_8_byte_reg(register),
             // default to 4 byte register
             _ => Self::convert_4_byte_reg(register),
+        }
+    }
+
+    fn convert_8_byte_reg(register: asm::Register) -> String {
+        match register {
+            asm::Register::AX => "%rax".to_string(),
+            asm::Register::CX => "%rcx".to_string(),
+            asm::Register::DX => "%rdx".to_string(),
+            asm::Register::SI => "%rsi".to_string(),
+            asm::Register::DI => "%rdi".to_string(),
+            asm::Register::R8 => "%r8".to_string(),
+            asm::Register::R9 => "%r9".to_string(),
+            asm::Register::R10 => "%r10".to_string(),
+            asm::Register::R11 => "%r11".to_string(),
         }
     }
 
     fn convert_4_byte_reg(register: asm::Register) -> String {
         match register {
             asm::Register::AX => "%eax".to_string(),
+            asm::Register::CX => "%ecx".to_string(),
             asm::Register::DX => "%edx".to_string(),
+            asm::Register::SI => "%esi".to_string(),
+            asm::Register::DI => "%edi".to_string(),
+            asm::Register::R8 => "%r8d".to_string(),
+            asm::Register::R9 => "%r9d".to_string(),
             asm::Register::R10 => "%r10d".to_string(),
             asm::Register::R11 => "%r11d".to_string(),
         }
@@ -40,8 +60,13 @@ impl<'a> Emitter<'a> {
 
     fn convert_1_byte_reg(register: asm::Register) -> String {
         match register {
-            asm::Register::AX => "al".to_string(),
+            asm::Register::AX => "%al".to_string(),
+            asm::Register::CX => "%cl".to_string(),
             asm::Register::DX => "%dl".to_string(),
+            asm::Register::SI => "%sil".to_string(),
+            asm::Register::DI => "%dil".to_string(),
+            asm::Register::R8 => "%r8b".to_string(),
+            asm::Register::R9 => "%r9b".to_string(),
             asm::Register::R10 => "%r10b".to_string(),
             asm::Register::R11 => "%r11b".to_string(),
         }

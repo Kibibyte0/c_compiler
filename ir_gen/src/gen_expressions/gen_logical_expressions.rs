@@ -1,23 +1,38 @@
+// Generation of short-circuiting logical expressions (`&&` and `||`).
+//
+// This module defines how logical AND and OR operations are lowered into Tacky
+// IR while preserving short-circuit semantics:
+//
+// - For `a && b`, the right-hand side `b` is only evaluated if `a` is true (non-zero).
+// - For `a || b`, the right-hand side `b` is only evaluated if `a` is false (zero).
+//
+// Each operation produces an explicit control flow with labels and conditional
+// jumps, ensuring precise runtime behavior identical to C-like semantics.
+
 use crate::IRgen;
 use crate::tacky;
 use parser::ast::{self};
 
 impl<'a, 'b> IRgen<'a, 'b> {
-    pub(super) fn gen_logical_expr(
-        &mut self,
-        operator: ast::BinaryOP,
-        operand1: ast::Expression,
-        operand2: ast::Expression,
-        instructions: &mut Vec<tacky::Instruction>,
-    ) -> tacky::Value {
-        match operator {
-            ast::BinaryOP::LogicalAnd => self.gen_logical_and(operand1, operand2, instructions),
-            ast::BinaryOP::LogicalOr => self.gen_logical_or(operand1, operand2, instructions),
-            _ => unreachable!("Only LogicalAnd and LogicalOr should reach gen_logical_expr"),
-        }
-    }
-
-    fn gen_logical_and(
+    /// Generates short-circuiting logic for a logical AND expression.
+    ///
+    /// ```
+    /// result = (a && b)
+    /// ```
+    ///
+    /// IR outline:
+    /// ```
+    ///   val1 = <evaluate a>
+    ///   jump_if_zero val1, false_label
+    ///   val2 = <evaluate b>
+    ///   jump_if_zero val2, false_label
+    ///   result = 1
+    ///   jump end_label
+    /// false_label:
+    ///   result = 0
+    /// end_label:
+    /// ```
+    pub(super) fn gen_logical_and(
         &mut self,
         operand1: ast::Expression,
         operand2: ast::Expression,
@@ -27,43 +42,59 @@ impl<'a, 'b> IRgen<'a, 'b> {
         let false_label = self.make_label();
         let end_label = self.make_label();
 
-        // evaluate first expression, val1
+        // Evaluate first operand (`a` in `a && b`)
         let val1 = self.gen_expression(operand1, instructions);
 
-        // jump to false lable if val1 is zero
+        // If first operand is false (zero), skip evaluating the second
         instructions.push(tacky::Instruction::JumpIfZero(val1, false_label));
 
-        // evaluate second expression, val2
+        // Evaluate second operand only if first was true
         let val2 = self.gen_expression(operand2, instructions);
 
-        // jump to false label if val2 is zero
+        // If second operand is also false, jump to false branch
         instructions.push(tacky::Instruction::JumpIfZero(val2, false_label));
 
-        // both are non-zero => result = 1
+        // Both operands non-zero → result = 1 (true)
         instructions.push(tacky::Instruction::Copy {
             src: tacky::Value::Constant(1),
             dst: result_var,
         });
 
-        // jump to end
+        // Skip false branch
         instructions.push(tacky::Instruction::Jump(end_label));
 
-        // false label
+        // False branch → result = 0 (false)
         instructions.push(tacky::Instruction::Label(false_label));
-
-        // result = 0
         instructions.push(tacky::Instruction::Copy {
             src: tacky::Value::Constant(0),
             dst: result_var,
         });
 
-        // end label
+        // End of AND evaluation
         instructions.push(tacky::Instruction::Label(end_label));
 
         result_var
     }
 
-    fn gen_logical_or(
+    /// Generates short-circuiting logic for a logical OR expression.
+    ///
+    /// ```
+    /// result = (a || b)
+    /// ```
+    ///
+    /// IR outline:
+    /// ```
+    ///   val1 = <evaluate a>
+    ///   jump_if_not_zero val1, true_label
+    ///   val2 = <evaluate b>
+    ///   jump_if_not_zero val2, true_label
+    ///   result = 0
+    ///   jump end_label
+    /// true_label:
+    ///   result = 1
+    /// end_label:
+    /// ```
+    pub(super) fn gen_logical_or(
         &mut self,
         operand1: ast::Expression,
         operand2: ast::Expression,
@@ -73,37 +104,35 @@ impl<'a, 'b> IRgen<'a, 'b> {
         let true_label = self.make_label();
         let end_label = self.make_label();
 
-        // evaluate first expression, val1
+        // Evaluate first operand (`a` in `a || b`)
         let val1 = self.gen_expression(operand1, instructions);
 
-        // jump to true lable if val1 is not zero
+        // If first operand is true (non-zero), short-circuit to true branch
         instructions.push(tacky::Instruction::JumpIfNotZero(val1, true_label));
 
-        // evaluate second expression, val2
+        // Otherwise evaluate the second operand
         let val2 = self.gen_expression(operand2, instructions);
 
-        // jump to true label if val2 is not zero
+        // If second operand is true, jump to true branch
         instructions.push(tacky::Instruction::JumpIfNotZero(val2, true_label));
 
-        // both are zero => result = 0
+        // Both operands false → result = 0
         instructions.push(tacky::Instruction::Copy {
             src: tacky::Value::Constant(0),
             dst: result_var,
         });
 
-        // jump to end label
+        // Skip true branch
         instructions.push(tacky::Instruction::Jump(end_label));
 
-        // true label
+        // True branch → result = 1
         instructions.push(tacky::Instruction::Label(true_label));
-
-        // result = 1
         instructions.push(tacky::Instruction::Copy {
             src: tacky::Value::Constant(1),
             dst: result_var,
         });
 
-        // end label
+        // End of OR evaluation
         instructions.push(tacky::Instruction::Label(end_label));
 
         result_var

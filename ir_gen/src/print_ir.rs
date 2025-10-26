@@ -1,6 +1,9 @@
 use shared_context::Identifier;
 
-use crate::{IRgen, tacky};
+use crate::{
+    IRgen,
+    tacky::{self, Value},
+};
 
 // a printer for the IR, for debugging
 
@@ -8,8 +11,10 @@ impl<'a, 'b> IRgen<'a, 'b> {
     pub fn print(&self, program: tacky::Program) {
         println!("Program");
 
-        let function = program.into_parts();
-        self.print_function(function);
+        let functions = program.into_parts();
+        for function in functions {
+            self.print_function(function);
+        }
     }
 
     fn format_identifier(&self, identifier: Identifier) -> String {
@@ -25,14 +30,26 @@ impl<'a, 'b> IRgen<'a, 'b> {
     }
 
     fn print_function(&self, function: tacky::FunctionDef) {
-        let (name, instructions) = function.into_parts();
+        let (name, params, instructions) = function.into_parts();
 
         let indent = " ".repeat(2);
         println!("{}FunctionDef {}", indent, self.format_identifier(name));
+        self.print_params(params);
 
         for instr in instructions {
             self.print_instruction(instr);
         }
+    }
+
+    fn print_params(&self, params: Vec<Identifier>) {
+        let indent = " ".repeat(2);
+        println!("{}Parameters: ", indent);
+
+        print!("{}(", indent);
+        for param in params {
+            print!("{} ", self.format_identifier(param))
+        }
+        println!(")");
     }
 
     fn print_instruction(&self, instr: tacky::Instruction) {
@@ -53,7 +70,23 @@ impl<'a, 'b> IRgen<'a, 'b> {
             | tacky::Instruction::JumpIfNotZero(_, _) => {
                 self.print_control_flow(instr, indent);
             }
+
+            tacky::Instruction::FunCall { name, args, dst } => {
+                self.print_function_call(name, args, dst, indent);
+            }
         }
+    }
+
+    fn print_function_call(&self, name: Identifier, args: Vec<Value>, dst: Value, indent: String) {
+        print!(
+            "{}FunCall(name: {}, args: ",
+            indent,
+            self.format_identifier(name)
+        );
+        for arg in args {
+            print!("{}", self.format_value(arg));
+        }
+        println!(", dst: {})", self.format_value(dst));
     }
 
     fn print_operator(&self, instr: tacky::Instruction, indent: String) {

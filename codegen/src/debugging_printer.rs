@@ -12,8 +12,10 @@ impl<'a> DebuggingPrinter<'a> {
     pub fn print(&self, program: asm::Program) {
         println!("Program");
 
-        let function = program.into_parts();
-        self.print_function(function);
+        let functions = program.into_parts();
+        for function in functions {
+            self.print_function(function);
+        }
     }
 
     fn format_identifier(&self, identifier: Identifier) -> String {
@@ -80,8 +82,17 @@ impl<'a> DebuggingPrinter<'a> {
             asm::Instruction::AllocateStack(size) => {
                 println!("{}AllocateStack({:?})", indent, size);
             }
+            asm::Instruction::DeallocateStack(size) => {
+                println!("{}DeallocateStack({:?})", indent, size);
+            }
             asm::Instruction::Ret => {
                 println!("{}Ret", indent);
+            }
+            asm::Instruction::Push(src) => {
+                println!("{}Push({:?})", indent, src)
+            }
+            asm::Instruction::Call(label) => {
+                println!("{}Call({})", indent, self.format_identifier(label))
             }
         }
     }

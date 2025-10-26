@@ -2,9 +2,11 @@ use crate::asm_gen::AsmGen;
 use crate::{asm, asm::Operand::Reg, asm::Register};
 use ir_gen::tacky;
 
-// this file contain impl for binary and unary operations
+// This file contains implementations for lowering binary and unary operations.
 
 impl AsmGen {
+    /// Dispatches a Tacky binary operation to the correct handler.
+    /// Some operations (div/mod) require special handling, comparisons generate `cmp` + `setcc`.
     pub(super) fn handle_binary(
         op: tacky::BinaryOP,
         src1: tacky::Value,
@@ -28,6 +30,8 @@ impl AsmGen {
         }
     }
 
+    /// Dispatches a Tacky unary operation.
+    /// `LogicalNot` is handled specially, other unary ops are lowered to `mov + unary`.
     pub(super) fn handle_unary(
         op: tacky::UnaryOP,
         src: tacky::Value,
@@ -49,7 +53,7 @@ impl AsmGen {
         }
     }
 
-    /// handle binary operation that have a regular form
+    /// Lower a regular arithmetic operation (`+`, `-`, `*`) as `mov src1, dst` + `op src2, dst`.
     fn handle_regular_form(
         op: tacky::BinaryOP,
         src1: tacky::Value,
@@ -68,6 +72,7 @@ impl AsmGen {
         });
     }
 
+    /// Lower division and modulus, which use AX/DX registers in x86-64.
     fn handle_div_mod(
         op: tacky::BinaryOP,
         src1: tacky::Value,
@@ -79,7 +84,7 @@ impl AsmGen {
             src: Self::convert_val(src1),
             dst: Reg(Register::AX),
         });
-        asm_instructions.push(asm::Instruction::Cdq);
+        asm_instructions.push(asm::Instruction::Cdq); // Sign-extend AX to DX:AX
         asm_instructions.push(asm::Instruction::Idiv(Self::convert_val(src2)));
 
         let ret_reg = match op {
@@ -93,6 +98,7 @@ impl AsmGen {
         });
     }
 
+    /// Lower logical NOT (`!`) operation as `cmp + mov 0 + setcc`.
     fn handle_logical_not(
         src: tacky::Value,
         dst: tacky::Value,
@@ -112,6 +118,7 @@ impl AsmGen {
         ));
     }
 
+    /// Lower comparison operations (`>`, `<`, `==`, etc.) as `cmp + mov 0 + setcc`.
     fn handle_comparison(
         op: tacky::BinaryOP,
         src1: tacky::Value,
@@ -133,17 +140,17 @@ impl AsmGen {
         ));
     }
 
+    /// Convert Tacky binary operator to ASM binary operator.
     fn convert_binary_op(op: tacky::BinaryOP) -> asm::BinaryOP {
         match op {
             tacky::BinaryOP::Add => asm::BinaryOP::Add,
             tacky::BinaryOP::Sub => asm::BinaryOP::Sub,
             tacky::BinaryOP::Mul => asm::BinaryOP::Mul,
-            // there are more tacky BinaryOP variant than asm BinaryOP
-            // this arm will never be reached so it have some arbitrary value
-            _ => asm::BinaryOP::Add,
+            _ => asm::BinaryOP::Add, // unreachable for div/mod/comparison
         }
     }
 
+    /// Convert Tacky comparison operator to ASM condition code.
     fn convert_comparison_op(op: tacky::BinaryOP) -> asm::Cond {
         match op {
             tacky::BinaryOP::GreaterThan => asm::Cond::G,
@@ -152,17 +159,16 @@ impl AsmGen {
             tacky::BinaryOP::LessThanOrEq => asm::Cond::LE,
             tacky::BinaryOP::Equal => asm::Cond::E,
             tacky::BinaryOP::NotEqual => asm::Cond::NE,
-            // this will never be reached
-            _ => asm::Cond::E,
+            _ => asm::Cond::E, // unreachable
         }
     }
 
+    /// Convert Tacky unary operator to ASM unary operator.
     fn convert_unary_op(op: tacky::UnaryOP) -> asm::UnaryOP {
         match op {
             tacky::UnaryOP::Not => asm::UnaryOP::Not,
             tacky::UnaryOP::Neg => asm::UnaryOP::Neg,
-            // this will never be reached
-            _ => asm::UnaryOP::Neg,
+            _ => asm::UnaryOP::Neg, // unreachable
         }
     }
 }
