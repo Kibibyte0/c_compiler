@@ -129,7 +129,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             _ => Err(ParseErr::expected(
                 "binary operator",
                 &token,
-                &self.ctx.source_map,
+                &self.source_map,
             )),
         }
     }
@@ -145,7 +145,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             _ => Err(ParseErr::expected(
                 "unary operator",
                 &token,
-                &self.ctx.source_map,
+                &self.source_map,
             )),
         }
     }

@@ -21,7 +21,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             _ => Err(ParseErr::new(
                 String::from("invalid expression"),
                 &token,
-                &self.ctx.source_map,
+                &self.source_map,
             )),
         }
     }
@@ -121,7 +121,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 ParseErr::new(
                     "failed to parse integer constant".to_string(),
                     &token,
-                    &self.ctx.source_map,
+                    &self.source_map,
                 )
             })?;
             let expr_type = ExpressionType::Constant(value);
@@ -132,7 +132,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             Err(ParseErr::expected(
                 "integer constant",
                 &token,
-                &self.ctx.source_map,
+                &self.source_map,
             ))
         }
     }

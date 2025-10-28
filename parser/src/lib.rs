@@ -1,6 +1,8 @@
 use lexer::{SpannedToken, token::Token};
 use parse_err::ParseErr;
-use shared_context::{CompilerContext, Identifier, Span, SpannedIdentifier};
+use shared_context::{
+    Identifier, Span, SpannedIdentifier, interner::Interner, source_map::SourceMap,
+};
 use std::error::Error;
 
 use crate::ast::*;
@@ -21,9 +23,10 @@ pub mod print_ast;
 /// maps and the string interner.
 pub fn parse<'src, 'ctx>(
     lexer: lexer::Lexer<'src>,
-    ctx: &'ctx mut CompilerContext<'src>,
+    interner: &'ctx mut Interner<'src>,
+    source_map: &'ctx SourceMap<'src>,
 ) -> Result<Program, Box<dyn Error>> {
-    let mut parser = Parser::new(lexer, ctx)?;
+    let mut parser = Parser::new(lexer, interner, source_map)?;
     let program = parser.parse_program()?;
     Ok(program)
 }
@@ -36,7 +39,8 @@ pub fn parse<'src, 'ctx>(
 /// The parser builds an abstract syntax tree (AST) for the entire source program.
 pub struct Parser<'src, 'ctx> {
     lexer: lexer::Lexer<'src>,
-    ctx: &'ctx mut CompilerContext<'src>,
+    interner: &'ctx mut Interner<'src>,
+    source_map: &'ctx SourceMap<'src>,
 
     /// The most recently consumed token.
     current_token: SpannedToken<'src>,
@@ -51,11 +55,13 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Creates a new parser instance from a lexer and compiler context.
     pub fn new(
         lexer: lexer::Lexer<'src>,
-        ctx: &'ctx mut CompilerContext<'src>,
+        interner: &'ctx mut Interner<'src>,
+        source_map: &'ctx SourceMap<'src>,
     ) -> Result<Self, ParseErr> {
         Ok(Self {
             lexer,
-            ctx,
+            interner,
+            source_map,
             current_token: SpannedToken::default(),
             first_peeked_token: None,
             second_peeked_token: None,
@@ -82,7 +88,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     ParseErr::new(
                         "unexpected end of input".to_string(),
                         &self.current_token,
-                        &self.ctx.source_map,
+                        &self.source_map,
                     )
                 })?;
                 self.current_token = token;
@@ -102,7 +108,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     ParseErr::new(
                         "end of input".to_string(),
                         &self.current_token,
-                        &self.ctx.source_map,
+                        &self.source_map,
                     )
                 })?)
             }
@@ -124,7 +130,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     ParseErr::new(
                         "end of input (peek_two)".to_string(),
                         &self.current_token,
-                        &self.ctx.source_map,
+                        &self.source_map,
                     )
                 })?)
             }
@@ -146,7 +152,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     ParseErr::new(
                         "end of input (peek_three)".to_string(),
                         &self.current_token,
-                        &self.ctx.source_map,
+                        &self.source_map,
                     )
                 })?)
             }
@@ -160,7 +166,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     fn expect_token(&mut self, expected: Token) -> Result<(), ParseErr> {
         let token = self.peek()?;
         if token.get_token() != expected {
-            Err(ParseErr::expected(expected, &token, &self.ctx.source_map))
+            Err(ParseErr::expected(expected, &token, &self.source_map))
         } else {
             self.advance()?; // consume the expected token
             Ok(())
@@ -320,14 +326,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let span = Span::new(start, end, line);
 
         if token.get_token() == Token::Identifier {
-            let identifier = Identifier::new(self.ctx.interner.intern(token.get_lexeme()), 0);
+            let identifier = Identifier::new(self.interner.intern(token.get_lexeme()), 0);
             Ok(SpannedIdentifier::new(identifier, span))
         } else {
-            Err(ParseErr::expected(
-                "identifier",
-                &token,
-                &self.ctx.source_map,
-            ))
+            Err(ParseErr::expected("identifier", &token, &self.source_map))
         }
     }
 }
