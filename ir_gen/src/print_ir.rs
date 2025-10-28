@@ -1,13 +1,18 @@
-use shared_context::Identifier;
+use shared_context::{Identifier, interner::Interner};
 
-use crate::{
-    IRgen,
-    tacky::{self, Value},
-};
+use crate::tacky::{self, Value};
+
+pub struct DebuggingPrinter<'src, 'ctx> {
+    interner: &'ctx Interner<'src>,
+}
 
 // a printer for the IR, for debugging
 
-impl<'a, 'b> IRgen<'a, 'b> {
+impl<'src, 'ctx> DebuggingPrinter<'src, 'ctx> {
+    pub fn new(interner: &'ctx Interner<'src>) -> Self {
+        Self { interner }
+    }
+
     pub fn print(&self, program: tacky::Program) {
         println!("Program");
 

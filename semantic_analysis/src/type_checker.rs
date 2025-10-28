@@ -3,7 +3,7 @@ use crate::{
     semantic_error::{ErrorType, SemanticErr},
 };
 use parser::ast::*;
-use shared_context::{CompilerContext, symbol_table::Type};
+use shared_context::{source_map::SourceMap, symbol_table::SymbolTable, symbol_table::Type};
 
 mod typecheck_expressions;
 mod typecheck_functions;
@@ -22,8 +22,11 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     /// 1. Every expression and statement is type-consistent.
     /// 2. All variable and function references adhere to declared types.
     /// 3. No invalid operations occur between incompatible types.
-    pub fn new(compiler_ctx: &'ctx mut CompilerContext<'src>) -> Self {
-        Self { compiler_ctx }
+    pub fn new(symbol_table: &'ctx mut SymbolTable, source_map: &'ctx SourceMap<'src>) -> Self {
+        Self {
+            symbol_table,
+            source_map,
+        }
     }
 
     /// Performs full type checking on the input program.
@@ -38,7 +41,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         for function in functions {
             let checked_function = match self.typecheck_function_declaration(function) {
                 Ok(fun) => fun,
-                Err(err) => return Err(SemanticErr::new(err, &self.compiler_ctx.source_map)),
+                Err(err) => return Err(SemanticErr::new(err, &self.source_map)),
             };
             typechecked_functions.push(checked_function);
         }
@@ -97,9 +100,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
 
         // Register variable in the compiler's symbol table.
         // Currently, all variables are assumed to be of type `int`.
-        self.compiler_ctx
-            .symbol_table
-            .add(sp_iden, Type::Int, span, false);
+        self.symbol_table.add(sp_iden, Type::Int, span, false);
 
         // Recursively type check the initializer (if present).
         let checked_init = match init {

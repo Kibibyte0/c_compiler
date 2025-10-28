@@ -1,7 +1,8 @@
 use crate::semantic_error::{ErrorType, SemanticErr};
 use crate::{IdentifierResolver, ResolverContext, ResolverEntry};
 use parser::ast::*;
-use shared_context::{CompilerContext, Identifier, SpannedIdentifier};
+use shared_context::source_map::SourceMap;
+use shared_context::{Identifier, SpannedIdentifier};
 
 mod resolve_expressions;
 mod resolve_statements;
@@ -17,9 +18,9 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
     /// This struct handles the first pass of semantic analysis:
     /// 1. resolving identifiers (variables and functions) and detecting duplicate declarations.
     /// 2. assign all identifiers with no linkage a unqiue identifier
-    pub fn new(compiler_ctx: &'ctx CompilerContext<'src>) -> Self {
+    pub fn new(source_map: &'ctx SourceMap<'src>) -> Self {
         Self {
-            compiler_ctx,
+            source_map,
             variable_counter: 1, // auto-generated variable counter starts at 1
         }
     }
@@ -50,7 +51,7 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         for function in functions {
             resolved_functions.push(
                 self.resolve_function_declaration(function, &mut resolver_ctx)
-                    .map_err(|err| SemanticErr::new(err, &self.compiler_ctx.source_map))?,
+                    .map_err(|err| SemanticErr::new(err, &self.source_map))?,
             );
         }
 

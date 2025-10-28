@@ -53,7 +53,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         span: Span,
         has_body: bool,
     ) -> Result<bool, ErrorType> {
-        if let Some(prev_entry) = self.compiler_ctx.symbol_table.get(sp_iden.get_identifier()) {
+        if let Some(prev_entry) = self.symbol_table.get(sp_iden.get_identifier()) {
             if fun_type != prev_entry.entry_type {
                 return Err(ErrorType::IncompatibleDecl {
                     first: span,
@@ -81,8 +81,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         span: Span,
         defined: bool,
     ) {
-        self.compiler_ctx
-            .symbol_table
+        self.symbol_table
             .add(sp_iden.clone(), fun_type.clone(), span, defined);
     }
 
@@ -91,9 +90,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     /// Currently all parameters are assumed to be `int`.
     fn register_function_params(&mut self, params: &Vec<SpannedIdentifier>, span: Span) {
         for param in params {
-            self.compiler_ctx
-                .symbol_table
-                .add(param.clone(), Type::Int, span, false);
+            self.symbol_table.add(param.clone(), Type::Int, span, false);
         }
     }
 }

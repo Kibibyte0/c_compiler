@@ -87,11 +87,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         sp_ident: SpannedIdentifier,
         span: Span,
     ) -> Result<ExpressionType, ErrorType> {
-        let entry = self
-            .compiler_ctx
-            .symbol_table
-            .get(sp_ident.get_identifier())
-            .unwrap();
+        let entry = self.symbol_table.get(sp_ident.get_identifier()).unwrap();
 
         if entry.entry_type != Type::Int {
             // Attempting to use a function or incompatible type as a variable
@@ -122,11 +118,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         args: Vec<Box<Expression>>,
         span: Span,
     ) -> Result<ExpressionType, ErrorType> {
-        let entry = self
-            .compiler_ctx
-            .symbol_table
-            .get(sp_iden.get_identifier())
-            .unwrap();
+        let entry = self.symbol_table.get(sp_iden.get_identifier()).unwrap();
 
         // Ensure the identifier refers to a function
         if let Type::FunType(expected_args) = entry.entry_type {

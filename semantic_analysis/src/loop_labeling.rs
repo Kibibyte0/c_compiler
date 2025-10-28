@@ -3,7 +3,7 @@ use crate::{
     semantic_error::{ErrorType, SemanticErr},
 };
 use parser::ast::*;
-use shared_context::{CompilerContext, Identifier, Span};
+use shared_context::{Identifier, Span, interner::Interner, source_map::SourceMap};
 
 impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     /// Creates a new loop labeling pass.
@@ -17,9 +17,14 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     /// 1. Assigns unique labels to each loop construct (`while`, `do-while`, `for`).
     /// 2. Ensures that `break` and `continue` statements appear only inside loops.
     /// 3. Associates each `break`/`continue` with the label of its nearest enclosing loop.
-    pub fn new(compiler_ctx: &'ctx mut CompilerContext<'src>, label_counter: usize) -> Self {
+    pub fn new(
+        interner: &'ctx mut Interner<'src>,
+        source_map: &'ctx SourceMap<'src>,
+        label_counter: usize,
+    ) -> Self {
         Self {
-            compiler_ctx,
+            interner,
+            source_map,
             label_counter,
         }
     }
@@ -31,7 +36,7 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     fn make_label(&mut self) -> Identifier {
         let s = format!("label_{}", self.label_counter);
         self.label_counter += 1;
-        let symbol = self.compiler_ctx.interner.intern(&s);
+        let symbol = self.interner.intern(&s);
         Identifier::new(symbol, 0)
     }
 
@@ -63,7 +68,7 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
         let labeled_body = if let Some(block) = body {
             match self.label_block(block, None) {
                 Ok(block) => Some(block),
-                Err(err) => return Err(SemanticErr::new(err, &self.compiler_ctx.source_map)),
+                Err(err) => return Err(SemanticErr::new(err, &self.source_map)),
             }
         } else {
             None

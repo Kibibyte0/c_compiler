@@ -11,7 +11,19 @@ use shared_context::{Identifier, interner::Interner};
 
 mod gen_expressions;
 mod gen_statements;
-mod print_ir;
+pub mod print_ir;
+
+/// the enrty point for IR generation
+/// Consumes an AST and produce a tacky program
+pub fn lower_to_tacky(
+    program: ast::Program,
+    interner: &mut Interner,
+    var_counter: usize,
+) -> tacky::Program {
+    let mut ir_gen = IRgen::new(var_counter, interner);
+    let program_tacky = ir_gen.gen_tacky(program);
+    program_tacky
+}
 
 /// Generates the compiler’s intermediate representation (IR)
 /// from a high-level abstract syntax tree (AST).

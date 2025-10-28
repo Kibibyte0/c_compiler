@@ -1,7 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 
 use parser::ast::Program;
-use shared_context::{CompilerContext, SpannedIdentifier, interner::Symbol};
+use shared_context::{
+    SpannedIdentifier,
+    interner::{Interner, Symbol},
+    source_map::SourceMap,
+    symbol_table::SymbolTable,
+};
 
 use crate::semantic_error::SemanticErr;
 
@@ -94,41 +99,45 @@ impl ResolverContext {
 /// First pass: resolves variable and function identifiers
 /// Builds the symbol table and detects duplicate declarations
 pub(crate) struct IdentifierResolver<'src, 'ctx> {
-    compiler_ctx: &'ctx CompilerContext<'src>,
+    source_map: &'ctx SourceMap<'src>,
     variable_counter: usize, // Counter for auto-generated variables
 }
 
 /// Second pass: labels each loop to support `break` and `continue`
 /// Ensures break/continue are used only inside loops
 pub(crate) struct LoopLabeling<'src, 'ctx> {
-    compiler_ctx: &'ctx mut CompilerContext<'src>,
+    interner: &'ctx mut Interner<'src>,
+    source_map: &'ctx SourceMap<'src>,
     label_counter: usize, // Counter for unique loop labels
 }
 
 /// Third pass: type checking
 /// Ensures static typing rules are respected and expressions are correctly typed
 pub(crate) struct TypeChecker<'src, 'ctx> {
-    compiler_ctx: &'ctx mut CompilerContext<'src>,
+    symbol_table: &'ctx mut SymbolTable,
+    source_map: &'ctx SourceMap<'src>,
 }
 
 /// Run all semantic analysis passes on the AST.
 /// Returns the transformed AST and the final auto-variable counter.
 /// - The counter ensures that auto-generated variables in code generation won't collide.
-pub fn analize(
-    compiler_ctx: &mut CompilerContext,
+pub fn analize<'src, 'ctx>(
+    interner: &'ctx mut Interner<'src>,
+    symbol_table: &'ctx mut SymbolTable,
+    source_map: &'ctx SourceMap<'src>,
     program: Program,
 ) -> Result<(Program, usize), SemanticErr> {
     // Identifier Resolution Pass
-    let mut id_resolver = IdentifierResolver::new(compiler_ctx);
+    let mut id_resolver = IdentifierResolver::new(source_map);
     let resolved_program = id_resolver.resolve_program(program)?;
 
     // Loop Labeling Pass
-    let mut loop_labeling = LoopLabeling::new(compiler_ctx, id_resolver.get_var_count());
+    let mut loop_labeling = LoopLabeling::new(interner, source_map, id_resolver.get_var_count());
     let labeled_program = loop_labeling.label_program(resolved_program)?;
     let counter = loop_labeling.get_label_count();
 
     // Type Checking Pass
-    let mut type_checker = TypeChecker::new(compiler_ctx);
+    let mut type_checker = TypeChecker::new(symbol_table, source_map);
     let checked_program = type_checker.typecheck_program(labeled_program)?;
 
     // Return fully processed AST and auto-variable counter
