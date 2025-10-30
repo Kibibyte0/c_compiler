@@ -119,8 +119,7 @@ pub fn emit_assembly(file_path: &str, file_name: &str) -> Result<String, Box<dyn
 
     let asm_file_name = format!("{}.s", remove_file_extension(file_name));
     let output_path = set_file_name(file_path, &asm_file_name);
-    Emitter::new(12, 16, 2, &ctx.interner, &ctx.symbol_table)
-        .write_program(program_asm, &output_path)?;
+    Emitter::new(&ctx.interner, &ctx.symbol_table).write_program(program_asm, &output_path)?;
 
     Ok(output_path)
 }
