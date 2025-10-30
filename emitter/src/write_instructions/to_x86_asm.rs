@@ -5,8 +5,8 @@ use crate::Emitter;
 impl<'a> Emitter<'a> {
     /// convert an operand to it's x86_64 form, reg_size specifiy the size of the register in bytes
     /// if the operand is a register, entering an invalid size will default to $ bytes
-    pub(crate) fn convert_operand(operand: asm::Operand, comma: bool, reg_size: usize) -> String {
-        let mut x86_operand = match operand {
+    pub(crate) fn convert_operand(operand: asm::Operand, reg_size: usize) -> String {
+        let x86_operand = match operand {
             asm::Operand::Immediate(int) => format!("${int}"),
             asm::Operand::Stack(int) => format!("{int}(%rbp)"),
             asm::Operand::Reg(reg) => Emitter::convert_register(reg, reg_size),
@@ -15,9 +15,6 @@ impl<'a> Emitter<'a> {
             asm::Operand::Pseudo(_) => "dummy string".to_string(),
         };
 
-        if comma {
-            x86_operand.push(',');
-        }
         x86_operand
     }
 
