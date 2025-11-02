@@ -32,6 +32,11 @@ impl Token {
         )
     }
 
+    /// Returns 'true' if this token repressent a declaration specifier
+    pub fn is_specifier(&self) -> bool {
+        matches!(self, Token::Int | Token::Static | Token::Extern)
+    }
+
     /// Returns the operator precedence value (higher = binds more tightly).
     pub fn precedence(&self) -> usize {
         match self {
@@ -71,6 +76,8 @@ impl fmt::Display for Token {
             Token::Do => write!(f, "do"),
             Token::Break => write!(f, "break"),
             Token::Continue => write!(f, "continue"),
+            Token::Static => write!(f, "static"),
+            Token::Extern => write!(f, "extern"),
 
             // Operators
             Token::Assignment => write!(f, "="),

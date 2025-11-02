@@ -74,6 +74,10 @@ pub enum Token {
     Break,
     #[token("continue")]
     Continue,
+    #[token("static")]
+    Static,
+    #[token("extern")]
+    Extern,
 
     //
     // Operators
