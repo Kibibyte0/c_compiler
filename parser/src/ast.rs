@@ -1,4 +1,5 @@
 mod expressions;
+
 use shared_context::Identifier;
 use shared_context::{Span, SpannedIdentifier};
 
@@ -6,9 +7,9 @@ pub use expressions::{BinaryOP, Expression, ExpressionType, UnaryOP};
 
 /// Represents the top-level program node in the AST.
 ///
-/// A Program consists of one or more function declarations.
+/// A Program consists of one or more declarations.
 pub struct Program {
-    functions: Vec<FunctionDecl>,
+    declarations: Vec<Declaration>,
 }
 
 /// Represents a block scope enclosed by `{}`.
@@ -40,6 +41,13 @@ pub enum Declaration {
     FunDecl(FunctionDecl),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageClass {
+    Static,
+    Extern,
+    None,
+}
+
 /// Represents a function declaration, including its parameters and body.
 ///
 /// Each function has a name, a list of parameters, an optional body (for forward
@@ -48,6 +56,7 @@ pub struct FunctionDecl {
     name: SpannedIdentifier,
     params: Vec<SpannedIdentifier>,
     body: Option<Block>,
+    storage: StorageClass,
     span: Span,
 }
 
@@ -57,12 +66,14 @@ impl FunctionDecl {
         name: SpannedIdentifier,
         params: Vec<SpannedIdentifier>,
         body: Option<Block>,
+        storage: StorageClass,
         span: Span,
     ) -> Self {
         Self {
             name,
             params,
             body,
+            storage,
             span,
         }
     }
@@ -77,6 +88,10 @@ impl FunctionDecl {
         self.span
     }
 
+    pub fn get_storage_class(&self) -> StorageClass {
+        self.storage
+    }
+
     /// Deconstructs the function declaration into its components.
     pub fn into_parts(
         self,
@@ -84,9 +99,10 @@ impl FunctionDecl {
         SpannedIdentifier,
         Vec<SpannedIdentifier>,
         Option<Block>,
+        StorageClass,
         Span,
     ) {
-        (self.name, self.params, self.body, self.span)
+        (self.name, self.params, self.body, self.storage, self.span)
     }
 }
 
@@ -96,18 +112,42 @@ impl FunctionDecl {
 pub struct VariableDecl {
     name: SpannedIdentifier,
     init: Option<Expression>,
+    storage: StorageClass,
     span: Span,
 }
 
 impl VariableDecl {
     /// Creates a new [`VariableDecl`].
-    pub fn new(name: SpannedIdentifier, init: Option<Expression>, span: Span) -> Self {
-        Self { name, init, span }
+    pub fn new(
+        name: SpannedIdentifier,
+        init: Option<Expression>,
+        storage: StorageClass,
+        span: Span,
+    ) -> Self {
+        Self {
+            name,
+            init,
+            storage,
+            span,
+        }
+    }
+
+    pub fn get_storage_class(&self) -> StorageClass {
+        self.storage
+    }
+
+    /// return spanned identifier
+    pub fn get_sp_identifier(&self) -> SpannedIdentifier {
+        self.name
+    }
+
+    pub fn get_span(&self) -> Span {
+        self.span
     }
 
     /// Deconstructs the variable declaration into its components.
-    pub fn into_parts(self) -> (SpannedIdentifier, Option<Expression>, Span) {
-        (self.name, self.init, self.span)
+    pub fn into_parts(self) -> (SpannedIdentifier, Option<Expression>, StorageClass, Span) {
+        (self.name, self.init, self.storage, self.span)
     }
 }
 
@@ -202,12 +242,12 @@ pub enum BlockItem {
 
 impl Program {
     /// Creates a new Program with the given set of functions.
-    pub fn new(functions: Vec<FunctionDecl>) -> Self {
-        Self { functions }
+    pub fn new(declarations: Vec<Declaration>) -> Self {
+        Self { declarations }
     }
 
     /// Deconstructs the program into its function list.
-    pub fn into_parts(self) -> Vec<FunctionDecl> {
-        self.functions
+    pub fn into_parts(self) -> Vec<Declaration> {
+        self.declarations
     }
 }

@@ -1,12 +1,11 @@
 use lexer::{SpannedToken, token::Token};
 use parse_err::ParseErr;
-use shared_context::{
-    Identifier, Span, SpannedIdentifier, interner::Interner, source_map::SourceMap,
-};
+use shared_context::{Span, interner::Interner, source_map::SourceMap};
 use std::error::Error;
 
 use crate::ast::*;
 
+mod parse_declarations;
 mod parse_err;
 mod parse_expressions;
 mod parse_statement;
@@ -86,8 +85,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 // No lookahead available, fetch from lexer
                 let token = self.lexer.next().ok_or_else(|| {
                     ParseErr::new(
-                        "unexpected end of input".to_string(),
-                        &self.current_token,
+                        "unexpected end of input",
+                        self.current_token.get_span(),
                         &self.source_map,
                     )
                 })?;
@@ -106,8 +105,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 self.first_peeked_token = self.lexer.next();
                 Ok(self.first_peeked_token.ok_or_else(|| {
                     ParseErr::new(
-                        "end of input".to_string(),
-                        &self.current_token,
+                        "end of input",
+                        self.current_token.get_span(),
                         &self.source_map,
                     )
                 })?)
@@ -128,8 +127,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 self.second_peeked_token = self.lexer.next();
                 Ok(self.second_peeked_token.ok_or_else(|| {
                     ParseErr::new(
-                        "end of input (peek_two)".to_string(),
-                        &self.current_token,
+                        "end of input (peek_two)",
+                        self.current_token.get_span(),
                         &self.source_map,
                     )
                 })?)
@@ -138,7 +137,11 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     /// Peeks three tokens ahead without consuming any.
-    fn peek_three(&mut self) -> Result<SpannedToken<'src>, ParseErr> {
+    ///
+    /// currently peek three is no longer in use due to a change in the parser
+    /// but it's left here in case if it's needed in the future
+    /// if it is of no use after finishing the parser, it will be discarded
+    fn _peek_three(&mut self) -> Result<SpannedToken<'src>, ParseErr> {
         // Ensure first and second peeked tokens exist
         if self.second_peeked_token.is_none() {
             self.peek_two()?;
@@ -150,8 +153,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 self.third_peeked_token = self.lexer.next();
                 Ok(self.third_peeked_token.ok_or_else(|| {
                     ParseErr::new(
-                        "end of input (peek_three)".to_string(),
-                        &self.current_token,
+                        "end of input (peek_three)",
+                        self.current_token.get_span(),
                         &self.source_map,
                     )
                 })?)
@@ -178,72 +181,11 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// A program is a list of function declarations. This method loops
     /// until EOF, repeatedly parsing top-level functions.
     pub fn parse_program(&mut self) -> Result<Program, ParseErr> {
-        let mut functions = Vec::new();
+        let mut declarations = Vec::new();
         while self.peek().is_ok() {
-            functions.push(self.parse_function_decl()?);
+            declarations.push(self.parse_declaration()?);
         }
-        Ok(Program::new(functions))
-    }
-
-    /// Parses a function declaration:
-    ///
-    /// ```text
-    /// int <identifier> ( <param-list> ) <block-or-semicolon>
-    /// ```
-    fn parse_function_decl(&mut self) -> Result<FunctionDecl, ParseErr> {
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
-
-        self.expect_token(Token::Int)?;
-        let name = self.parse_identifier()?;
-
-        self.expect_token(Token::LeftParenthesis)?;
-        let params = self.parse_params_list()?;
-        self.expect_token(Token::RightParenthesis)?;
-
-        let body = self.parse_optional_block()?;
-
-        let end = self.current_token.get_span().end;
-        let span = Span::new(start, end, line);
-
-        Ok(FunctionDecl::new(name, params, body, span))
-    }
-
-    /// Parses an optional function body block.
-    ///
-    /// Either a `{ ... }` block or a terminating semicolon (`;`) for
-    /// declarations without a body.
-    fn parse_optional_block(&mut self) -> Result<Option<Block>, ParseErr> {
-        match self.peek()?.get_token() {
-            Token::LeftCurlyBracket => Ok(Some(self.parse_block()?)),
-            _ => {
-                self.expect_token(Token::Semicolon)?;
-                Ok(None)
-            }
-        }
-    }
-
-    /// Parses a function parameter list.
-    ///
-    /// Accepts either:
-    /// - `void` (no parameters), or
-    /// - one or more `int <identifier>` pairs separated by commas.
-    fn parse_params_list(&mut self) -> Result<Vec<SpannedIdentifier>, ParseErr> {
-        let mut params = Vec::new();
-        if self.peek()?.get_token() == Token::Void {
-            self.advance()?; // consume 'void'
-            return Ok(params);
-        }
-
-        self.expect_token(Token::Int)?;
-        params.push(self.parse_identifier()?);
-
-        while self.peek()?.get_token() != Token::RightParenthesis {
-            self.expect_token(Token::Comma)?;
-            self.expect_token(Token::Int)?;
-            params.push(self.parse_identifier()?);
-        }
-        Ok(params)
+        Ok(Program::new(declarations))
     }
 
     /// Parses a block of statements and/or declarations:
@@ -252,8 +194,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// { <block-item>* }
     /// ```
     fn parse_block(&mut self) -> Result<Block, ParseErr> {
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
 
         self.expect_token(Token::LeftCurlyBracket)?;
 
@@ -272,64 +213,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     /// Parses a block item, which may be either a declaration or a statement.
     fn parse_block_item(&mut self) -> Result<BlockItem, ParseErr> {
-        let next_token = self.peek()?;
-        match next_token.get_token() {
-            Token::Int => Ok(BlockItem::D(self.parse_declaration()?)),
-            _ => Ok(BlockItem::S(self.parse_statement()?)),
-        }
-    }
-
-    /// Parses a declaration, determining whether it is a function or variable declaration.
-    fn parse_declaration(&mut self) -> Result<Declaration, ParseErr> {
-        let token = self.peek_three()?.get_token();
-        match token {
-            Token::LeftParenthesis => Ok(Declaration::FunDecl(self.parse_function_decl()?)),
-            _ => Ok(Declaration::VarDecl(self.parse_variable_declaration()?)),
-        }
-    }
-
-    /// Parses a variable declaration:
-    ///
-    /// ```text
-    /// int <identifier> [= <expr>] ;
-    /// ```
-    fn parse_variable_declaration(&mut self) -> Result<VariableDecl, ParseErr> {
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
-
-        self.expect_token(Token::Int)?;
-        let name = self.parse_identifier()?;
-        let init = match self.peek()?.get_token() {
-            Token::Assignment => {
-                self.advance()?; // consume '='
-                Some(self.parse_expression(0)?)
-            }
-            _ => None,
-        };
-
-        self.expect_token(Token::Semicolon)?;
-
-        let end = self.current_token.get_span().end;
-        let span = Span::new(start, end, line);
-        Ok(VariableDecl::new(name, init, span))
-    }
-
-    /// Parses an identifier and returns it as a SpannedToken.
-    ///
-    /// Converts the lexeme into an interned identifier and attaches
-    /// span information for error reporting.
-    fn parse_identifier(&mut self) -> Result<SpannedIdentifier, ParseErr> {
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
-        let token = self.advance()?;
-        let end = self.current_token.get_span().end;
-        let span = Span::new(start, end, line);
-
-        if token.get_token() == Token::Identifier {
-            let identifier = Identifier::new(self.interner.intern(token.get_lexeme()), 0);
-            Ok(SpannedIdentifier::new(identifier, span))
+        if self.peek()?.get_token().is_specifier() {
+            Ok(BlockItem::D(self.parse_declaration()?))
         } else {
-            Err(ParseErr::expected("identifier", &token, &self.source_map))
+            Ok(BlockItem::S(self.parse_statement()?))
         }
     }
 }

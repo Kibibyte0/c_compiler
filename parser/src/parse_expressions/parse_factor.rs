@@ -19,8 +19,8 @@ impl<'a, 'b> Parser<'a, 'b> {
             Token::LeftParenthesis => self.handle_parenthesized_expression(),
             Token::Identifier => self.handle_identifier_expression(),
             _ => Err(ParseErr::new(
-                String::from("invalid expression"),
-                &token,
+                "invalid expression",
+                token.get_span(),
                 &self.source_map,
             )),
         }
@@ -33,8 +33,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     /// Handles parsing of unary expressions, e.g., `-x` or `!flag`
     fn handle_unary_expression(&mut self) -> Result<Expression, ParseErr> {
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
 
         let op = self.parse_unary_op()?;
         let inner_exp = self.parse_factor()?;
@@ -67,8 +66,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     /// Parses a function call: `foo(arg1, arg2, ...)`
     fn parse_function_call(&mut self) -> Result<Expression, ParseErr> {
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
 
         let name = self.parse_identifier()?;
         self.expect_token(Token::LeftParenthesis)?;
@@ -99,8 +97,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     /// Parses a variable expression
     fn parse_variable_expression(&mut self) -> Result<Expression, ParseErr> {
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
 
         let id = self.parse_identifier()?;
         let end = self.current_token.get_span().end;
@@ -112,15 +109,14 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     /// Parses an integer constant
     fn parse_constant_int(&mut self) -> Result<Expression, ParseErr> {
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
         let token = self.advance()?;
 
         if token.get_token() == Token::ConstantInt {
             let value = token.get_lexeme().parse::<i32>().map_err(|_| {
                 ParseErr::new(
-                    "failed to parse integer constant".to_string(),
-                    &token,
+                    "failed to parse integer constant",
+                    token.get_span(),
                     &self.source_map,
                 )
             })?;

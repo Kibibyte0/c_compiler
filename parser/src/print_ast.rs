@@ -16,8 +16,8 @@ impl<'a> DebugTreePrinter<'a> {
 
     /// Prints the entire program
     pub fn print(&self, program: Program) {
-        for function in program.into_parts() {
-            self.print_function(function, 0);
+        for decl in program.into_parts() {
+            self.print_declaration(decl, 0);
         }
     }
 
@@ -28,10 +28,11 @@ impl<'a> DebugTreePrinter<'a> {
 
     /// Prints a function declaration with its parameters and body
     fn print_function(&self, function: FunctionDecl, level: usize) {
-        let (name, params, body, _) = function.into_parts();
+        let (name, params, body, storage_class, _) = function.into_parts();
         println!(
-            "{}FunctionDecl \"{}\"",
+            "{}FunctionDecl {:?} \"{}\"",
             self.indent(level),
+            storage_class,
             self.format_spanned_identifier(name)
         );
 
@@ -80,10 +81,11 @@ impl<'a> DebugTreePrinter<'a> {
 
     /// Prints a variable declaration and its initializer (if present)
     fn print_variable_decl(&self, decl: VariableDecl, level: usize) {
-        let (name, init, _) = decl.into_parts();
+        let (name, init, storage_class, _) = decl.into_parts();
         println!(
-            "{}VariableDecl \"{}\"",
+            "{}VariableDecl {:?} \"{}\"",
             self.indent(level),
+            storage_class,
             self.format_spanned_identifier(name)
         );
         if let Some(expr) = init {

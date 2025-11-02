@@ -9,8 +9,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Handles all types of statements: return, if, loops, break/continue, compound blocks, or expressions.
     pub(crate) fn parse_statement(&mut self) -> Result<Statement, ParseErr> {
         // Get the current token's line and start position for the statement's span.
-        let line = self.peek()?.get_span().line;
-        let start = self.peek()?.get_span().start;
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
 
         // Peek at the next token to decide which type of statement to parse
         let next_token = self.peek()?.get_token();
@@ -154,13 +153,19 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Parses the initialization part of a `for` loop
     fn parse_for_init(&mut self) -> Result<ForInit, ParseErr> {
         let next_token = self.peek()?.get_token();
-        match next_token {
-            Token::Int => Ok(ForInit::D(self.parse_variable_declaration()?)),
-            _ => {
-                let for_init = ForInit::E(self.parse_optional_for_statement_expr()?);
-                self.expect_token(Token::Semicolon)?;
-                Ok(for_init)
-            }
+        if next_token.is_specifier() {
+            let (start, line) = self.peek()?.get_span().get_start_and_line();
+            let (specifier_list, specifier_span) = self.collect_declaration_specifiers()?;
+            let storage_class = self.parse_specifier_list(specifier_list, specifier_span)?;
+            Ok(ForInit::D(self.parse_variable_declaration(
+                storage_class,
+                start,
+                line,
+            )?))
+        } else {
+            let for_init = ForInit::E(self.parse_optional_for_statement_expr()?);
+            self.expect_token(Token::Semicolon)?;
+            Ok(for_init)
         }
     }
 

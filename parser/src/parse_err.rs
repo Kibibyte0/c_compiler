@@ -1,5 +1,5 @@
 use lexer::SpannedToken;
-use shared_context::source_map::SourceMap;
+use shared_context::{Span, source_map::SourceMap};
 use std::error::Error;
 use std::fmt;
 
@@ -19,9 +19,9 @@ impl ParseErr {
     ///
     /// The message is formatted using the SourceMap to include the
     /// token’s position and surrounding source information.
-    pub fn new(message: String, token: &SpannedToken, source_map: &SourceMap) -> Self {
+    pub fn new(message: &str, span: Span, source_map: &SourceMap) -> Self {
         Self {
-            formated_error: source_map.format_message(message, token.get_span()),
+            formated_error: source_map.format_message(message, span),
         }
     }
 
@@ -34,8 +34,8 @@ impl ParseErr {
     /// ```
     pub fn expected(expected: impl ToString, found: &SpannedToken, source_map: &SourceMap) -> Self {
         ParseErr::new(
-            format!("expected: '{}'", expected.to_string()),
-            found,
+            &format!("expected: '{}'", expected.to_string()),
+            found.get_span(),
             source_map,
         )
     }

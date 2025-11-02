@@ -61,9 +61,13 @@ impl Expression {
         Self { expr, span }
     }
 
-    /// Returns a shared reference to the underlying [`ExpressionType`].
+    /// Returns a shared reference to the underlying ExpressionType.
     pub fn get_expr_type_ref(&self) -> &ExpressionType {
         &self.expr
+    }
+
+    pub fn get_span(&self) -> Span {
+        self.span
     }
 
     /// Deconstructs the expression into its variant and span.
