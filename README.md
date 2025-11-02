@@ -25,6 +25,7 @@ It is designed for learning, experimentation, and understanding how high level c
   - Variable assignment
 - Local variables inside functions
 - Compilation to assembly and object files
+- Global and static variables declarations and definitions
 - Error reporting with source code spans
 
 ---
