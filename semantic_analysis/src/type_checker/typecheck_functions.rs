@@ -1,6 +1,9 @@
 use crate::{TypeChecker, semantic_error::ErrorType};
 use parser::ast::*;
-use shared_context::{Span, SpannedIdentifier, symbol_table::Type};
+use shared_context::{
+    Span, SpannedIdentifier,
+    symbol_table::{IdenAttrs, Type},
+};
 
 impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     /// Type checks a function declaration.
@@ -15,27 +18,47 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         &mut self,
         function: FunctionDecl,
     ) -> Result<FunctionDecl, ErrorType> {
-        let (sp_iden, params, body, span) = function.into_parts();
+        let (sp_iden, params, body, storage_class, span) = function.into_parts();
 
         // Currently, function type is represented by its arity (number of parameters).
         let fun_type = Type::FunType(params.len());
-
         let has_body = body.is_some();
+        // check if the function is external or internal
+        let mut external = storage_class != StorageClass::Static;
+        let mut defined = false;
 
-        // Check for previous declarations or definitions of the same function.
-        let defined = self.check_previous_function_decl(sp_iden, fun_type, span, has_body)?;
+        // if there exist a previous entry, update external and defined to match that of the previous entry
+        match self.check_previous_function_decl(sp_iden, fun_type, storage_class, span, has_body)? {
+            Some((prev_external, prev_defined)) => {
+                external = prev_external;
+                defined = prev_defined;
+            }
+            None => (),
+        }
 
         // Register the function in the symbol table.
-        self.register_function(sp_iden, fun_type, span, defined || has_body);
+        self.register_function(sp_iden, fun_type, span, external, defined || has_body);
 
         if let Some(block) = body {
             // Function parameters are treated as variables within the function scope.
             self.register_function_params(&params, span);
             let typechecked_body = Some(self.typecheck_block(block)?);
-            Ok(FunctionDecl::new(sp_iden, params, typechecked_body, span))
+            Ok(FunctionDecl::new(
+                sp_iden,
+                params,
+                typechecked_body,
+                storage_class,
+                span,
+            ))
         } else {
             // Declaration without a body is allowed.
-            Ok(FunctionDecl::new(sp_iden, params, body, span))
+            Ok(FunctionDecl::new(
+                sp_iden,
+                params,
+                body,
+                storage_class,
+                span,
+            ))
         }
     }
 
@@ -44,31 +67,48 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     /// # Logic
     /// - If a previous declaration exists:
     ///   - Ensure the type is compatible.
+    ///   - Ensure they have the same storage class.
     ///   - Prevent redefining an already defined function.
-    /// - Returns `true` if a previous definition exists, `false` otherwise.
+    /// - Returns a tuple (external, defined) of the previous entry, returns None if there is no entry
     fn check_previous_function_decl(
         &self,
         sp_iden: SpannedIdentifier,
         fun_type: Type,
+        storage_class: StorageClass,
         span: Span,
         has_body: bool,
-    ) -> Result<bool, ErrorType> {
+    ) -> Result<Option<(bool, bool)>, ErrorType> {
+        // if there is a previous declaration with the same identifier
         if let Some(prev_entry) = self.symbol_table.get(sp_iden.get_identifier()) {
+            // chick if they have the same type
             if fun_type != prev_entry.entry_type {
                 return Err(ErrorType::IncompatibleDecl {
-                    first: span,
-                    second: prev_entry.span,
+                    first: prev_entry.span,
+                    second: span,
                 });
             }
-            if prev_entry.defined && has_body {
-                return Err(ErrorType::DuplicateDeclaration {
+            let external = prev_entry.attributes.is_external();
+            let defined = prev_entry.attributes.is_defined();
+            // check if the previous declaration is also a definition
+            if defined && has_body {
+                return Err(ErrorType::DuplicateDefintion {
                     first: prev_entry.sp_iden.get_span(),
                     second: sp_iden.get_span(),
                 });
             }
-            return Ok(prev_entry.defined);
+            // check if they have compatible storage class
+            if external && storage_class == StorageClass::Static {
+                return Err(ErrorType::IncompatibleLinkage {
+                    first: prev_entry.span,
+                    second: span,
+                    first_external: external,
+                    second_external: storage_class != StorageClass::Static,
+                });
+            }
+            // return the status of the previous declaration
+            return Ok(Some((external, defined)));
         }
-        Ok(false)
+        Ok(None)
     }
 
     /// Registers a function in the symbol table.
@@ -79,10 +119,12 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         sp_iden: SpannedIdentifier,
         fun_type: Type,
         span: Span,
+        external: bool,
         defined: bool,
     ) {
+        let attrs = IdenAttrs::FunAttrs { defined, external };
         self.symbol_table
-            .add(sp_iden.clone(), fun_type.clone(), span, defined);
+            .add(sp_iden.clone(), fun_type.clone(), attrs, span);
     }
 
     /// Registers the parameters of a function as local variables.
@@ -90,7 +132,8 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     /// Currently all parameters are assumed to be `int`.
     fn register_function_params(&mut self, params: &Vec<SpannedIdentifier>, span: Span) {
         for param in params {
-            self.symbol_table.add(param.clone(), Type::Int, span, false);
+            self.symbol_table
+                .add(param.clone(), Type::Int, IdenAttrs::LocalAttrs, span);
         }
     }
 }

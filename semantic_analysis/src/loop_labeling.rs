@@ -51,12 +51,18 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     /// Traverses all functions in the program, labeling loops and validating control flow.
     /// Returns a new, semantically valid AST with labels inserted.
     pub fn label_program(&mut self, program: Program) -> Result<Program, SemanticErr> {
-        let functions = program.into_parts();
-        let mut labeled_functions = Vec::new();
-        for function in functions {
-            labeled_functions.push(self.label_function_decl(function)?);
+        let declarations = program.into_parts();
+        let mut labeled_declarations = Vec::new();
+        for decl in declarations {
+            // if it is avariable delcaration skip it
+            // else label function declarations
+            match decl {
+                Declaration::VarDecl(_) => labeled_declarations.push(decl),
+                Declaration::FunDecl(fun_decl) => labeled_declarations
+                    .push(Declaration::FunDecl(self.label_function_decl(fun_decl)?)),
+            }
         }
-        Ok(Program::new(labeled_functions))
+        Ok(Program::new(labeled_declarations))
     }
 
     /// Labels loops and control-flow statements within a single function.
@@ -64,7 +70,7 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     /// - Recursively labels all loops inside the function body.
     /// - Propagates `SemanticErr` if an invalid `break` or `continue` is found.
     fn label_function_decl(&mut self, function: FunctionDecl) -> Result<FunctionDecl, SemanticErr> {
-        let (name, params, body, span) = function.into_parts();
+        let (name, params, body, storage_class, span) = function.into_parts();
         let labeled_body = if let Some(block) = body {
             match self.label_block(block, None) {
                 Ok(block) => Some(block),
@@ -73,7 +79,13 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
         } else {
             None
         };
-        Ok(FunctionDecl::new(name, params, labeled_body, span))
+        Ok(FunctionDecl::new(
+            name,
+            params,
+            labeled_body,
+            storage_class,
+            span,
+        ))
     }
 
     /// Labels all loops and statements inside a block.

@@ -7,9 +7,9 @@ use shared_context::source_map::SourceMap;
 #[derive(Debug)]
 pub enum ErrorType {
     /// An identifier is declared more than once in the same scope.
-    DuplicateDeclaration {
-        first: Span,  // Span of the first declaration
-        second: Span, // Span of the conflicting second declaration
+    DuplicateDefintion {
+        first: Span,  // Span of the first definition
+        second: Span, // Span of the conflicting second definition
     },
     /// A redeclaration with incompatible type or linkage
     IncompatibleDecl {
@@ -36,6 +36,17 @@ pub enum ErrorType {
     VariableAsFunction(Span),
     /// Attempt to use a function as a variable
     FunctionAsVariable(Span),
+    /// Incompatible linkage between the same identifier
+    IncompatibleLinkage {
+        first: Span,           // span of the first declatation
+        second: Span,          // span of the second declaration
+        first_external: bool,  // whether first is external or not
+        second_external: bool, // whether second is external ot not
+    },
+    /// Invalid initializer
+    InvalidInitializer(Span),
+    /// locar static function declaration
+    InvalidStaticDecl(Span, &'static str),
 }
 
 /// SemanticErr wraps a formatted error message for display purposes
@@ -49,7 +60,7 @@ impl SemanticErr {
     /// The `source_map` is used to generate human-readable source code references
     pub fn new(err: ErrorType, source_map: &SourceMap) -> Self {
         let formated_error = match err {
-            ErrorType::DuplicateDeclaration { first, second } => {
+            ErrorType::DuplicateDefintion { first, second } => {
                 Self::format_duplicate_decl_err(source_map, first, second)
             }
             ErrorType::IncompatibleDecl { first, second } => {
@@ -77,6 +88,24 @@ impl SemanticErr {
             ErrorType::FunctionAsVariable(span) => {
                 Self::format_function_as_variable_err(source_map, span)
             }
+            ErrorType::IncompatibleLinkage {
+                first,
+                second,
+                first_external,
+                second_external,
+            } => Self::format_incompatible_linkage_err(
+                source_map,
+                first,
+                second,
+                first_external,
+                second_external,
+            ),
+            ErrorType::InvalidInitializer(span) => {
+                Self::format_invalid_initializer_err(source_map, span)
+            }
+            ErrorType::InvalidStaticDecl(span, message) => {
+                Self::format_invalid_static_function_decl_err(source_map, span, message)
+            }
         };
 
         Self { formated_error }
@@ -90,8 +119,8 @@ impl SemanticErr {
             "duplicate declartion\n\
              first declaration:\n{}\
              second declaration:\n{}",
-            source_map.format_message("".to_string(), first),
-            source_map.format_message("".to_string(), second),
+            source_map.format_message("", first),
+            source_map.format_message("", second),
         )
     }
 
@@ -100,8 +129,8 @@ impl SemanticErr {
             "incompatible declartions\n\
              first declaration:\n{}\
              second declaration:\n{}",
-            source_map.format_message("".to_string(), first),
-            source_map.format_message("".to_string(), second),
+            source_map.format_message("", first),
+            source_map.format_message("", second),
         )
     }
 
@@ -115,56 +144,98 @@ impl SemanticErr {
             "expected {} argumnets, got {}\n{}",
             expected,
             got,
-            source_map.format_message("".to_string(), span)
+            source_map.format_message("", span)
         )
     }
 
     fn format_use_of_undeclared_err(source_map: &SourceMap, span: Span) -> String {
         format!(
             "use of undeclared identifier\n{}",
-            source_map.format_message("".to_string(), span)
+            source_map.format_message("", span)
         )
     }
 
     fn format_invalid_left_value_err(source_map: &SourceMap, span: Span) -> String {
         format!(
             "invalid left-hand side of assignment\n{}",
-            source_map.format_message("".to_string(), span)
+            source_map.format_message("", span)
         )
     }
 
     fn format_break_error(source_map: &SourceMap, span: Span) -> String {
         format!(
             "break statement can't exists outside of loop\n{}",
-            source_map.format_message("".to_string(), span)
+            source_map.format_message("", span)
         )
     }
 
     fn format_continue_error(source_map: &SourceMap, span: Span) -> String {
         format!(
             "continue statement can't exists outside of loop\n{}",
-            source_map.format_message("".to_string(), span)
+            source_map.format_message("", span)
         )
     }
 
     fn format_nested_function_declaration(source_map: &SourceMap, span: Span) -> String {
         format!(
             "can't define a new function inside the the body of a function\n{}",
-            source_map.format_message("".to_string(), span)
+            source_map.format_message("", span)
         )
     }
 
     fn format_variable_as_function_err(source_map: &SourceMap, span: Span) -> String {
         format!(
             "can't use a variable as a function\n{}",
-            source_map.format_message("".to_string(), span)
+            source_map.format_message("", span)
         )
     }
 
     fn format_function_as_variable_err(source_map: &SourceMap, span: Span) -> String {
         format!(
             "can't use a function as a variable\n{}",
-            source_map.format_message("".to_string(), span)
+            source_map.format_message("", span)
+        )
+    }
+
+    fn format_incompatible_linkage_err(
+        source_map: &SourceMap,
+        first: Span,
+        second: Span,
+        first_external: bool,
+        second_external: bool,
+    ) -> String {
+        format!(
+            "incompatilbe storage class between declarations\n\
+             first declaration\n{}\
+             second declaration\n{}",
+            source_map.format_message(Self::format_linkage(first_external), first),
+            source_map.format_message(Self::format_linkage(second_external), second)
+        )
+    }
+
+    // helper to format incompatible linkage
+    fn format_linkage(external: bool) -> &'static str {
+        if external { "extern" } else { "static" }
+    }
+
+    fn format_invalid_initializer_err(source_map: &SourceMap, span: Span) -> String {
+        format!(
+            "invalid initializer\n{}",
+            source_map.format_message(
+                "Initializers for variables with static duration must be a contant integers",
+                span
+            )
+        )
+    }
+
+    fn format_invalid_static_function_decl_err(
+        source_map: &SourceMap,
+        span: Span,
+        message: &str,
+    ) -> String {
+        format!(
+            "Invalid static declaration\n{}",
+            source_map.format_message(message, span)
         )
     }
 }

@@ -1,6 +1,7 @@
 use crate::IdentifierResolver;
 use crate::ResolverContext;
 use crate::semantic_error::ErrorType;
+use parser::ast::StorageClass;
 use parser::ast::{Expression, ForInit, Statement, StatementType};
 use shared_context::Identifier;
 
@@ -157,9 +158,19 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         resolver_ctx: &mut ResolverContext,
     ) -> Result<ForInit, ErrorType> {
         match init {
-            ForInit::D(decl) => Ok(ForInit::D(
-                self.resolve_variable_declaration(decl, resolver_ctx)?,
-            )),
+            ForInit::D(var_decl) => {
+                if var_decl.get_storage_class() != StorageClass::None {
+                    Err(ErrorType::InvalidStaticDecl(
+                        var_decl.get_span(),
+                        "can't declare a static variable inside a for loop header",
+                    ))
+                } else {
+                    Ok(ForInit::D(self.resolve_local_variable_declaration(
+                        var_decl,
+                        resolver_ctx,
+                    )?))
+                }
+            }
             ForInit::E(optional_expr) => Ok(ForInit::E(
                 self.resolve_optional_expr(optional_expr, resolver_ctx)?,
             )),

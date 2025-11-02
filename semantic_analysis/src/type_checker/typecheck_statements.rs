@@ -130,7 +130,9 @@ impl<'src, 'c> TypeChecker<'src, 'c> {
     /// Type check the initialization part of a for loop.
     fn typecheck_for_init(&mut self, for_init: ForInit) -> Result<ForInit, ErrorType> {
         match for_init {
-            ForInit::D(var_decl) => Ok(ForInit::D(self.typecheck_variable_declaration(var_decl)?)),
+            ForInit::D(var_decl) => Ok(ForInit::D(
+                self.typecheck_local_variable_declaration(var_decl)?,
+            )),
             ForInit::E(option_expr) => Ok(ForInit::E(
                 option_expr.map(|expr| self.typecheck_expression(expr).unwrap()),
             )),
