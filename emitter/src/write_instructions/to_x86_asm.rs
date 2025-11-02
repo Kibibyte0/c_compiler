@@ -5,11 +5,14 @@ use crate::Emitter;
 impl<'a> Emitter<'a> {
     /// convert an operand to it's x86_64 form, reg_size specifiy the size of the register in bytes
     /// if the operand is a register, entering an invalid size will default to $ bytes
-    pub(crate) fn convert_operand(operand: asm::Operand, reg_size: usize) -> String {
+    pub(crate) fn convert_operand(&self, operand: asm::Operand, reg_size: usize) -> String {
         let x86_operand = match operand {
             asm::Operand::Immediate(int) => format!("${int}"),
             asm::Operand::Stack(int) => format!("{int}(%rbp)"),
             asm::Operand::Reg(reg) => Emitter::convert_register(reg, reg_size),
+            asm::Operand::Data(identifier) => {
+                format!("{}(%rip)", self.format_identifier(identifier))
+            }
             // becuase register allocation removes all pseudo registers
             // it will not get printed as x86 assembly
             asm::Operand::Pseudo(_) => "dummy string".to_string(),

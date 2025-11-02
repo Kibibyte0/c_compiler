@@ -1,5 +1,5 @@
 use shared_context::Identifier;
-use shared_context::interner::Interner;
+use shared_context::{StaticVariable, interner::Interner};
 
 use crate::DebuggingPrinter;
 use crate::asm;
@@ -12,9 +12,12 @@ impl<'a> DebuggingPrinter<'a> {
     pub fn print(&self, program: asm::Program) {
         println!("Program");
 
-        let functions = program.into_parts();
-        for function in functions {
-            self.print_function(function);
+        let items = program.into_parts();
+        for item in items {
+            match item {
+                asm::TopLevel::F(fun_def) => self.print_function(fun_def),
+                asm::TopLevel::S(var_def) => self.print_static_variable(var_def),
+            }
         }
     }
 
@@ -22,14 +25,32 @@ impl<'a> DebuggingPrinter<'a> {
         format!("{}", self.interner.lookup(identifier.get_symbol()))
     }
 
-    fn print_function(&self, function: asm::FunctionDef) {
-        let (name, instructions) = function.into_parts();
+    fn format_lickage(external: bool) -> &'static str {
+        if external { "external" } else { "internal" }
+    }
+
+    fn print_static_variable(&self, var_def: StaticVariable) {
+        let (name, external, init) = var_def.into_parts();
 
         let indent = " ".repeat(2);
         println!(
-            "{}FunctionDef {}",
+            "{}StaticVariable(name: {}, linkage:{}, init: {})",
             indent,
-            self.interner.lookup(name.get_symbol())
+            self.format_identifier(name),
+            Self::format_lickage(external),
+            init
+        )
+    }
+
+    fn print_function(&self, function: asm::FunctionDef) {
+        let (name, external, instructions) = function.into_parts();
+
+        let indent = " ".repeat(2);
+        println!(
+            "{}FunctionDef(name: {}, linkage: {})",
+            indent,
+            self.format_identifier(name),
+            Self::format_lickage(external)
         );
 
         for instr in instructions {

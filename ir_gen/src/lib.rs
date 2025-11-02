@@ -5,22 +5,29 @@
 // is a flattened, instruction-based form that simplifies later optimization
 // and code generation phases.
 
-pub mod tacky;
-use parser::ast;
-use shared_context::{Identifier, interner::Interner};
+use parser::ast::{self, StorageClass};
+use shared_context::{
+    Identifier, StaticVariable,
+    interner::Interner,
+    symbol_table::{IdenAttrs, InitValue, SymbolTable},
+};
+
+use crate::tacky::TopLevel;
 
 mod gen_expressions;
 mod gen_statements;
 pub mod print_ir;
+pub mod tacky;
 
 /// the enrty point for IR generation
 /// Consumes an AST and produce a tacky program
 pub fn lower_to_tacky(
     program: ast::Program,
     interner: &mut Interner,
+    symbol_table: &SymbolTable,
     var_counter: usize,
 ) -> tacky::Program {
-    let mut ir_gen = IRgen::new(var_counter, interner);
+    let mut ir_gen = IRgen::new(var_counter, interner, symbol_table);
     let program_tacky = ir_gen.gen_tacky(program);
     program_tacky
 }
@@ -37,14 +44,20 @@ pub struct IRgen<'src, 'ctx> {
 
     /// Reference to the string interner used to manage symbol deduplication.
     interner: &'ctx mut Interner<'src>,
+    symbol_table: &'ctx SymbolTable,
 }
 
 impl<'src, 'ctx> IRgen<'src, 'ctx> {
     /// Creates a new IR generator instance.
-    pub fn new(var_counter: usize, interner: &'ctx mut Interner<'src>) -> Self {
+    pub fn new(
+        var_counter: usize,
+        interner: &'ctx mut Interner<'src>,
+        symbol_table: &'ctx SymbolTable,
+    ) -> Self {
         Self {
             var_counter,
             interner,
+            symbol_table,
         }
     }
 
@@ -93,23 +106,58 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     /// Each function definition in the AST is lowered into a corresponding
     /// tacky::FunctionDef. Function declarations (without bodies) are ignored.
     pub fn gen_tacky(&mut self, program: ast::Program) -> tacky::Program {
-        let functions = program.into_parts();
-        let mut tacky_functions = Vec::new();
+        let declarations = program.into_parts();
+        let mut tacky_items = Vec::new();
 
-        for function in functions {
-            if let Some(tacky_function) = self.gen_function_def(function) {
-                tacky_functions.push(tacky_function);
+        // generate function defintions
+        for decl in declarations {
+            match decl {
+                ast::Declaration::FunDecl(fun_decl) => {
+                    if let Some(tacky_function) = self.gen_function_def(fun_decl) {
+                        tacky_items.push(tacky::TopLevel::F(tacky_function));
+                    }
+                }
+                // skip file scope variable declarations
+                ast::Declaration::VarDecl(_) => continue,
             }
         }
 
-        tacky::Program::new(tacky_functions)
+        // generate static variables defintions
+        self.gen_static_variable_defintions(&mut tacky_items);
+        tacky::Program::new(tacky_items)
+    }
+
+    /// generate static variables defintions using the symbol table
+    ///
+    /// each static variable in the symbol table is lowerd to its corresponding tacky::StaticVariable
+    /// other entries in the table are ignored (local variabels and function declarations)
+    fn gen_static_variable_defintions(&self, tacky_items: &mut Vec<TopLevel>) {
+        for (iden, entry) in self.symbol_table.get_table_ref().iter() {
+            match entry.attributes {
+                IdenAttrs::StaticAttrs {
+                    init_value,
+                    external,
+                } => match init_value {
+                    InitValue::Initial(int) => {
+                        tacky_items.push(TopLevel::S(StaticVariable::new(*iden, external, int)))
+                    }
+                    InitValue::Tentative => {
+                        tacky_items.push(TopLevel::S(StaticVariable::new(*iden, external, 0)))
+                    }
+                    // skip unintialized variables
+                    InitValue::NoInitializer => continue,
+                },
+                // skip local variables and function declarations
+                _ => continue,
+            }
+        }
     }
 
     /// Generates IR for a single function definition.
     ///
     /// Returns `None` if the given AST node represents only a function declaration.
     fn gen_function_def(&mut self, function: ast::FunctionDecl) -> Option<tacky::FunctionDef> {
-        let (name, params, body, _) = function.into_parts();
+        let (name, params, body, _, _) = function.into_parts();
 
         match body {
             Some(block) => {
@@ -125,12 +173,23 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
 
                 Some(tacky::FunctionDef::new(
                     identifier,
+                    self.get_function_linkage(identifier),
                     tacky_params,
                     instructions,
                 ))
             }
             None => None, // Skip pure declarations
         }
+    }
+
+    /// get the linkage of the function definition
+    fn get_function_linkage(&self, iden: Identifier) -> bool {
+        // every defined function is gaurnteed to be in the symbol table at this point.
+        self.symbol_table
+            .get(iden)
+            .unwrap()
+            .attributes
+            .is_external()
     }
 
     /// Generates a full function body block.
@@ -193,7 +252,13 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
         var_decl: ast::VariableDecl,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
-        let (name, init, _) = var_decl.into_parts();
+        let (name, init, storage_class, _) = var_decl.into_parts();
+
+        // if a variable is declared with static keyword, skip it
+        // static variable definitions will be handled separatly
+        if storage_class == StorageClass::Static {
+            return;
+        }
 
         match init {
             Some(init) => {

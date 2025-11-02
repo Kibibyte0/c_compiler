@@ -1,5 +1,5 @@
 use ir_gen::tacky;
-use shared_context::{Identifier, interner::Interner};
+use shared_context::{Identifier, interner::Interner, symbol_table::SymbolTable};
 use std::collections::HashMap;
 
 // These modules implement different parts of the code generation pipeline.
@@ -19,8 +19,9 @@ mod reg_alloc;
 //   3. Fix or rewrite invalid instructions that violate constraints.
 
 // Stores the mapping from Tacky-level pseudo-registers to real registers or stack offsets.
-struct RegisterAllocation {
+struct RegisterAllocation<'ctx> {
     pseudo_reg_map: HashMap<Identifier, i32>, // maps each variable to a register or stack slot
+    symbol_table: &'ctx SymbolTable,          // used to resolve which variables are static
     sp_offset: i32,                           // current stack pointer offset (for spilled vars)
 }
 
@@ -40,12 +41,15 @@ pub struct DebuggingPrinter<'a> {
 // Main entry point for the code generation pipeline.
 //
 // Takes a Tacky IR program and returns a final assembly program.
-pub fn codegen(program_tacky: tacky::Program) -> asm::Program {
+pub fn codegen<'ctx>(
+    program_tacky: tacky::Program,
+    symbol_table: &'ctx SymbolTable,
+) -> asm::Program {
     // 1. Convert Tacky IR into an assembly AST (still uses pseudo-registers).
     let mut program_asm = AsmGen::new().gen_asm(program_tacky);
 
     // 2. Allocate real machine registers or stack slots to pseudo-registers.
-    let mut codegen = RegisterAllocation::new();
+    let mut codegen = RegisterAllocation::new(symbol_table);
     codegen.allocate_registers(&mut program_asm);
 
     // 3. Fix invalid or non-encodable instructions.

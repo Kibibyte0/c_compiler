@@ -29,20 +29,26 @@ impl AsmGen {
     /// Consumes a tacky::Program and returns an asm::Program.
     /// Each function in the Tacky IR is lowered to a corresponding
     /// assembly function using `gen_function_def`.
+    /// static variables remain unchanged
     pub fn gen_asm(&self, program: tacky::Program) -> asm::Program {
-        let functions = program.into_parts();
-        let mut asm_functions = Vec::new();
+        let items = program.into_parts();
+        let mut asm_items = Vec::new();
 
-        for function in functions {
-            asm_functions.push(self.gen_function_def(function));
+        for item in items {
+            match item {
+                tacky::TopLevel::F(fun_def) => {
+                    asm_items.push(asm::TopLevel::F(self.gen_function_def(fun_def)))
+                }
+                tacky::TopLevel::S(var_def) => asm_items.push(asm::TopLevel::S(var_def)),
+            }
         }
 
-        asm::Program::new(asm_functions)
+        asm::Program::new(asm_items)
     }
 
     /// Converts a single Tacky function definition into an assembly-level one.
     fn gen_function_def(&self, function: tacky::FunctionDef) -> asm::FunctionDef {
-        let (name, params, tacky_instructions) = function.into_parts();
+        let (name, external, params, tacky_instructions) = function.into_parts();
         let mut asm_instructions = Vec::new();
 
         // Placeholder stack allocation — actual size determined during
@@ -55,7 +61,7 @@ impl AsmGen {
         // Translate each Tacky instruction into assembly.
         self.gen_instructions(tacky_instructions, &mut asm_instructions);
 
-        asm::FunctionDef::new(name, asm_instructions)
+        asm::FunctionDef::new(name, external, asm_instructions)
     }
 
     /// Moves function parameters from argument registers or stack into pseudo-registers.

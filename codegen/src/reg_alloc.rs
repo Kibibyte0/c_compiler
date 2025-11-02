@@ -1,13 +1,17 @@
+use shared_context::symbol_table::IdenAttrs;
+use shared_context::symbol_table::SymbolTable;
+
 use crate::RegisterAllocation;
 use crate::asm;
 use std::collections::HashMap;
 
-impl RegisterAllocation {
+impl<'ctx> RegisterAllocation<'ctx> {
     /// Create a new RegisterAllocation instance
-    pub fn new() -> Self {
+    pub fn new(symbol_table: &'ctx SymbolTable) -> Self {
         Self {
             pseudo_reg_map: HashMap::new(), // Maps pseudo-register IDs to stack offsets
-            sp_offset: 0,                   // Tracks the current stack offset
+            symbol_table,
+            sp_offset: 0, // Tracks the current stack offset
         }
     }
 
@@ -24,9 +28,14 @@ impl RegisterAllocation {
 
     /// Top-level function: allocate memory for all pseudo registers in all functions.
     pub fn allocate_registers(&mut self, program: &mut asm::Program) {
-        let functions = program.get_mut_functions();
-        for function in functions {
-            self.handle_function(function);
+        let asm_items = program.get_mut_functions();
+        for item in asm_items {
+            match item {
+                asm::TopLevel::F(fun_def) => self.handle_function(fun_def),
+                // since all static variable defintion are at the end
+                // we return when we see the first static variable defintion
+                asm::TopLevel::S(_) => return,
+            }
         }
     }
 
@@ -88,20 +97,26 @@ impl RegisterAllocation {
 
     /// Convert a pseudo-register operand to a stack location if needed.
     fn to_stack(&mut self, operand: &mut asm::Operand) {
-        match operand {
-            asm::Operand::Pseudo(id) => {
-                if let Some(int) = self.pseudo_reg_map.get(id) {
-                    // Already allocated -> replace with stack offset
-                    *operand = asm::Operand::Stack(*int);
-                } else {
-                    // New pseudo register -> assign next stack slot
-                    self.sp_offset -= 4; // allocate 4 bytes
-                    self.pseudo_reg_map.insert(*id, self.sp_offset);
-                    *operand = asm::Operand::Stack(self.sp_offset);
-                }
+        if let asm::Operand::Pseudo(id) = operand {
+            // Already mapped? Replace and return.
+            if let Some(offset) = self.pseudo_reg_map.get(id) {
+                *operand = asm::Operand::Stack(*offset);
+                return;
             }
 
-            _ => return, // Real registers or immediate values remain unchanged
+            // Determine if this is a static/global or needs a stack slot.
+            let needs_stack = match self.symbol_table.get(*id) {
+                Some(entry) => !matches!(entry.attributes, IdenAttrs::StaticAttrs { .. }),
+                None => true,
+            };
+
+            if needs_stack {
+                self.sp_offset -= 4;
+                self.pseudo_reg_map.insert(*id, self.sp_offset);
+                *operand = asm::Operand::Stack(self.sp_offset);
+            } else {
+                *operand = asm::Operand::Data(*id);
+            }
         }
     }
 }

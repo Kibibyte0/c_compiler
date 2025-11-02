@@ -1,7 +1,7 @@
 use codegen::asm;
-use shared_context::Identifier;
 use shared_context::interner::Interner;
 use shared_context::symbol_table::SymbolTable;
+use shared_context::{Identifier, StaticVariable};
 use std::fs::File;
 use std::io;
 
@@ -34,12 +34,16 @@ impl<'a> Emitter<'a> {
         let mut file = File::create(output_file_path)?;
 
         // Decompose the program into individual functions
-        let functions = program.into_parts();
+        let items = program.into_parts();
 
-        for function in functions {
-            // Write each function's definition to the output buffer
-            self.write_function_def(function, &mut file)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        for item in items {
+            match item {
+                asm::TopLevel::F(fun_def) => {
+                    // Write each function's definition to the output buffer
+                    self.write_function_def(fun_def, &mut file)?;
+                }
+                asm::TopLevel::S(var_def) => self.write_static_varibale(var_def, &mut file)?,
+            }
         }
 
         // Write any necessary epilogue at the end of the program
@@ -53,8 +57,8 @@ impl<'a> Emitter<'a> {
         function: asm::FunctionDef,
         out: &mut impl io::Write,
     ) -> io::Result<()> {
-        let (name, instructions) = function.into_parts();
-        self.write_function_def_prolouge(name, out)?;
+        let (name, external, instructions) = function.into_parts();
+        self.write_function_def_prolouge(name, external, out)?;
 
         for instr in instructions {
             // Write each instruction for this function
@@ -62,6 +66,35 @@ impl<'a> Emitter<'a> {
         }
 
         Ok(())
+    }
+
+    /// write variables with static duration into the data section
+    fn write_static_varibale(
+        &self,
+        var_def: StaticVariable,
+        out: &mut impl io::Write,
+    ) -> io::Result<()> {
+        let (name, external, init) = var_def.into_parts();
+
+        if external {
+            writeln!(out, "\t.globl {}", self.format_identifier(name))?;
+        }
+
+        // if the initializer is zero, write into the bss seciton
+        if init == 0 {
+            writeln!(
+                out,
+                "\t.bss\n\t.align 4\n{}:\n\t.zero 4",
+                self.format_identifier(name),
+            )
+        } else {
+            writeln!(
+                out,
+                "\t.data\n\t.align 4\n{}:\n\t.long {}",
+                self.format_identifier(name),
+                init
+            )
+        }
     }
 
     /// Writes a program-level epilogue, e.g., section directives.
@@ -73,11 +106,16 @@ impl<'a> Emitter<'a> {
     fn write_function_def_prolouge(
         &self,
         name: Identifier,
+        external: bool,
         out: &mut impl io::Write,
     ) -> io::Result<()> {
         let fun_name = self.format_identifier(name);
-        // Declare function as global
-        writeln!(out, "\t.globl {}", fun_name)?;
+        // Declare function as global if it has an external linkage
+        if external {
+            writeln!(out, "\t.globl {}", fun_name)?;
+        }
+        writeln!(out, "\t.text")?;
+
         // Function label
         writeln!(out, "{}:", fun_name)?;
 
@@ -87,7 +125,19 @@ impl<'a> Emitter<'a> {
     }
 
     /// Converts an Identifier to a string using the interner.
+    // local static variables needs to be formatted with their IDs to avoid conflicts in the same file
     fn format_identifier(&self, identifier: Identifier) -> String {
-        format!("{}", self.interner.lookup(identifier.get_symbol()))
+        // default id is 0 when variables are created during parsing
+        // if it's not zero then this means a conflict happend, and the id needs
+        // to be printed alongside the symbol to resolve the conflict
+        if identifier.get_id() == 0 {
+            format!("{}", self.interner.lookup(identifier.get_symbol()))
+        } else {
+            format!(
+                "{}.{}",
+                self.interner.lookup(identifier.get_symbol()),
+                identifier.get_id()
+            )
+        }
     }
 }

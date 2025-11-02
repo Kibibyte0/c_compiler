@@ -43,8 +43,8 @@ impl<'a> Emitter<'a> {
         dst: asm::Operand,
         out: &mut impl io::Write,
     ) -> io::Result<()> {
-        let src = Emitter::convert_operand(src, 4);
-        let dst = Emitter::convert_operand(dst, 4);
+        let src = self.convert_operand(src, 4);
+        let dst = self.convert_operand(dst, 4);
         self.format_two_operand_instruction("movl", &src, &dst, out)
     }
 
@@ -55,7 +55,7 @@ impl<'a> Emitter<'a> {
         out: &mut impl io::Write,
     ) -> io::Result<()> {
         let op = Emitter::convert_unary_op(op);
-        let dst = Emitter::convert_operand(dst, 4);
+        let dst = self.convert_operand(dst, 4);
         self.format_one_operand_instruction(&op, &dst, out)
     }
 
@@ -67,13 +67,13 @@ impl<'a> Emitter<'a> {
         out: &mut impl io::Write,
     ) -> io::Result<()> {
         let op = Emitter::convert_binary_op(op);
-        let src = Emitter::convert_operand(src, 4);
-        let dst = Emitter::convert_operand(dst, 4);
+        let src = self.convert_operand(src, 4);
+        let dst = self.convert_operand(dst, 4);
         self.format_two_operand_instruction(&op, &src, &dst, out)
     }
 
     fn write_div_instruction(&self, src: asm::Operand, out: &mut impl io::Write) -> io::Result<()> {
-        let src = Emitter::convert_operand(src, 4);
+        let src = self.convert_operand(src, 4);
         self.format_one_operand_instruction("idivl", &src, out)
     }
 
@@ -111,8 +111,8 @@ impl<'a> Emitter<'a> {
         src2: asm::Operand,
         out: &mut impl io::Write,
     ) -> io::Result<()> {
-        let src1 = Emitter::convert_operand(src1, 4);
-        let src2 = Emitter::convert_operand(src2, 4);
+        let src1 = self.convert_operand(src1, 4);
+        let src2 = self.convert_operand(src2, 4);
         self.format_two_operand_instruction("cmpl", &src1, &src2, out)
     }
 
@@ -139,18 +139,18 @@ impl<'a> Emitter<'a> {
         out: &mut impl io::Write,
     ) -> io::Result<()> {
         let op = format!("set{}", Emitter::convert_cond(cond));
-        let dst = Emitter::convert_operand(dst, 1);
+        let dst = self.convert_operand(dst, 1);
         self.format_one_operand_instruction(&op, &dst, out)
     }
 
     fn write_push_instruction(&self, src: Operand, out: &mut impl io::Write) -> io::Result<()> {
-        let src = Self::convert_operand(src, 8);
+        let src = self.convert_operand(src, 8);
         self.format_one_operand_instruction("pushq", &src, out)
     }
 
     fn wrtie_call_instruction(&self, name: Identifier, out: &mut impl io::Write) -> io::Result<()> {
         let mut fun_name = self.format_identifier(name);
-        if !self.symbol_table.get(name).unwrap().defined {
+        if !self.symbol_table.get(name).unwrap().attributes.is_defined() {
             fun_name.push_str("@PLT");
         }
         self.format_one_operand_instruction("call", &fun_name, out)
@@ -161,6 +161,7 @@ impl<'a> Emitter<'a> {
         writeln!(out, "{label}:")
     }
 
+    /// format a two operand instruction and write it into out
     pub(crate) fn format_one_operand_instruction(
         &self,
         op: &str,
@@ -170,6 +171,7 @@ impl<'a> Emitter<'a> {
         writeln!(out, "\t{}\t{}", op, dst)
     }
 
+    /// format a single operand instruction and write it into out
     pub(crate) fn format_two_operand_instruction(
         &self,
         op: &str,

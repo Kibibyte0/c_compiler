@@ -6,9 +6,14 @@ impl InstructionFix {
     /// Fix up all instructions in a program by replacing illegal operand combinations
     /// with valid ones using temporary registers.
     pub fn fix_instructions(program: &mut asm::Program) {
-        let functions = program.get_mut_functions();
-        for function in functions {
-            Self::handle_function(function);
+        let asm_items = program.get_mut_functions();
+        for item in asm_items {
+            match item {
+                asm::TopLevel::F(fun_def) => Self::handle_function(fun_def),
+                // since all static variable defintion are at the end
+                // we return when we see the first static variable defintion
+                asm::TopLevel::S(_) => return,
+            }
         }
     }
 
@@ -63,7 +68,7 @@ impl InstructionFix {
         dst: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_stack(dst) && Self::is_stack(src) {
+        if Self::is_mem(dst) && Self::is_mem(src) {
             // Move src into temporary register R10
             new_instructions.push(asm::Instruction::Mov {
                 src,
@@ -88,7 +93,7 @@ impl InstructionFix {
         dst: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_stack(dst) && Self::is_stack(src) {
+        if Self::is_mem(dst) && Self::is_mem(src) {
             new_instructions.push(asm::Instruction::Mov {
                 src,
                 dst: Reg(Register::R10),
@@ -111,7 +116,7 @@ impl InstructionFix {
         dst: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_stack(dst) {
+        if Self::is_mem(dst) {
             new_instructions.push(asm::Instruction::Mov {
                 src: dst,
                 dst: Reg(Register::R11),
@@ -153,7 +158,7 @@ impl InstructionFix {
         dst: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_stack(src) && Self::is_stack(dst) {
+        if Self::is_mem(src) && Self::is_mem(dst) {
             // Use R10 as a temporary for src
             new_instructions.push(asm::Instruction::Mov {
                 src,
@@ -181,8 +186,8 @@ impl InstructionFix {
     }
 
     /// Helper: check if an operand is a stack address
-    fn is_stack(op: asm::Operand) -> bool {
-        matches!(op, asm::Operand::Stack(_))
+    fn is_mem(op: asm::Operand) -> bool {
+        matches!(op, asm::Operand::Stack(_) | asm::Operand::Data(_))
     }
 
     /// Helper: check if an operand is an immediate value

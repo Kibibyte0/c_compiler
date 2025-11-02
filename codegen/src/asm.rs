@@ -1,5 +1,5 @@
 // Re-export Identifier so it can be used directly by users of this module.
-use shared_context::Identifier;
+use shared_context::{Identifier, StaticVariable};
 
 /// Represents an entire assembly-level program.
 ///
@@ -7,45 +7,59 @@ use shared_context::Identifier;
 /// by a FunctionDef. This is the final stage before emitting actual
 /// assembly text or binary output.
 pub struct Program {
-    functions: Vec<FunctionDef>,
+    items: Vec<TopLevel>,
 }
 
 impl Program {
     /// Creates a new Program from a list of function definitions.
-    pub fn new(functions: Vec<FunctionDef>) -> Self {
-        Self { functions }
+    pub fn new(items: Vec<TopLevel>) -> Self {
+        Self { items }
     }
 
     /// Consumes the Program and returns the list of contained functions.
-    pub fn into_parts(self) -> Vec<FunctionDef> {
-        self.functions
+    pub fn into_parts(self) -> Vec<TopLevel> {
+        self.items
     }
 
     /// Returns a mutable reference to the underlying vector of functions.
-    pub fn get_mut_functions(&mut self) -> &mut Vec<FunctionDef> {
-        &mut self.functions
+    pub fn get_mut_functions(&mut self) -> &mut Vec<TopLevel> {
+        &mut self.items
     }
+}
+
+/// represent a global object in the assembly
+///
+/// can be a static variable definition or a function definition
+pub enum TopLevel {
+    S(StaticVariable),
+    F(FunctionDef),
 }
 
 /// Represents a single function in the generated assembly program.
 ///
 /// Each function has:
 /// - a `name` (identifier)
+/// - type of linkage (external or internal)
 /// - a list of assembly `instructions`
 pub struct FunctionDef {
     name: Identifier,
+    external: bool,
     instructions: Vec<Instruction>,
 }
 
 impl FunctionDef {
     /// Creates a new function definition.
-    pub fn new(name: Identifier, instructions: Vec<Instruction>) -> Self {
-        Self { name, instructions }
+    pub fn new(name: Identifier, external: bool, instructions: Vec<Instruction>) -> Self {
+        Self {
+            name,
+            external,
+            instructions,
+        }
     }
 
     /// Consumes the `FunctionDef` and returns its name and instructions.
-    pub fn into_parts(self) -> (Identifier, Vec<Instruction>) {
-        (self.name, self.instructions)
+    pub fn into_parts(self) -> (Identifier, bool, Vec<Instruction>) {
+        (self.name, self.external, self.instructions)
     }
 
     /// Returns a mutable reference to the function’s instruction list.
@@ -127,6 +141,7 @@ pub enum Operand {
     Pseudo(Identifier), // Compiler-generated pseudo-register (before allocation)
     Stack(i32),         // Stack slot (offset from base pointer)
     Immediate(i32),     // Immediate constant value
+    Data(Identifier),   // For RIP relative addressing
 }
 
 /// Enumerates the general-purpose registers available for use.
