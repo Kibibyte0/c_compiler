@@ -1,3 +1,5 @@
+use colored::Colorize;
+
 use crate::Span;
 
 /// Represents the mapping between AST positions and source code positions.
@@ -30,7 +32,7 @@ impl<'a> SourceMap<'a> {
     ///  3   | let x = 10;
     ///      |     ^~~ Error message
     /// ```
-    pub fn format_message(&self, message: String, span: Span) -> String {
+    pub fn format_message(&self, message: &str, span: Span) -> String {
         let line_text = self.get_line_text(span.start); // Get the text of the line containing the error
         let column = self.get_col_number(span.start); // Determine the column number of the error
 
@@ -39,14 +41,15 @@ impl<'a> SourceMap<'a> {
         let marker_len = (span.end - span.start).max(1); // At least one character should be marked
 
         // Construct a line with markers (^) and (~) showing the span
+        let tilde = "~".red().bold().to_string();
         for i in 0..=line_text.len() {
             if i == marker_start {
-                marker_line.push('^');
+                marker_line.push_str(&"^".red().bold().to_string());
                 for _ in 1..marker_len {
-                    marker_line.push('~');
+                    marker_line.push_str(&tilde);
                 }
                 marker_line.push(' ');
-                marker_line.push_str(&message);
+                marker_line.push_str(&message.red().bold().to_string());
                 break;
             } else if line_text.as_bytes()[i] == b'\t' {
                 marker_line.push('\t'); // Preserve tab alignment
@@ -56,9 +59,18 @@ impl<'a> SourceMap<'a> {
         }
 
         // Format the message with file name, line, column, and markers
+        let pipe = "|".white().bold().to_string();
+        let header =
+            format!("{} --> line {}:{}\n", self.file_name, span.line, column).bright_black();
         format!(
-            "{} --> line {}:{}\n     |\n{:>4} | {}\n     | {}\n",
-            self.file_name, span.line, column, span.line, line_text, marker_line
+            "{}     {}\n{:>4} {} {}\n     {} {}\n",
+            header,
+            pipe,
+            format!("{}", span.line).red().bold(),
+            pipe,
+            line_text.white().bold().to_string(),
+            pipe,
+            marker_line
         )
     }
 

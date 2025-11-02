@@ -62,6 +62,12 @@ impl Span {
     pub fn new(start: usize, end: usize, line: usize) -> Self {
         Self { start, end, line }
     }
+
+    /// returns a tuple (start, line)
+    /// used in keeping track of the position during parsing
+    pub fn get_start_and_line(&self) -> (usize, usize) {
+        (self.start, self.line)
+    }
 }
 
 /// Represents a unique identifier in the program
@@ -79,6 +85,10 @@ impl Identifier {
 
     pub fn get_symbol(&self) -> Symbol {
         self.symbol
+    }
+
+    pub fn get_id(&self) -> usize {
+        self.id
     }
 
     pub fn into_parts(self) -> (Symbol, usize) {
@@ -118,5 +128,29 @@ impl SpannedIdentifier {
 
     pub fn into_parts(self) -> (Identifier, Span) {
         (self.identifier, self.span)
+    }
+}
+
+/// a static variable in the IR
+///
+/// exach static variable contains, its identifier, linkage and initializer.
+pub struct StaticVariable {
+    name: Identifier,
+    external: bool,
+    init: i32,
+}
+
+impl StaticVariable {
+    pub fn new(name: Identifier, external: bool, init: i32) -> Self {
+        Self {
+            name,
+            external,
+            init,
+        }
+    }
+
+    /// consume the static variable node and retuen it's components
+    pub fn into_parts(self) -> (Identifier, bool, i32) {
+        (self.name, self.external, self.init)
     }
 }

@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 bumpalo = "3.19.0"
+colored = "3.0.0"
