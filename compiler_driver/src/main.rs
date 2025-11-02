@@ -75,38 +75,46 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let arg = Cli::parse();
 
-    let file_path = pre_process_file(&arg.file_path);
+    // Preprocess file first
+    let pre_path = pre_process_file(&arg.file_path);
+    let result = run_stage(&arg, &pre_path);
+
+    // clean up preprocessed file, even on failure
+    delete_file(&pre_path);
+
+    result
+}
+
+/// Dispatch to the appropriate compilation stage.
+/// Handles all temporary files within a single scope.
+fn run_stage(arg: &Cli, pre_path: &str) -> Result<(), Box<dyn Error>> {
     let file_name = get_file_name(&arg.file_path);
 
     match arg.selected_stage() {
-        Stage::Lex => lexer_stage(&file_path)?,
-        Stage::Parse => parser_stage(&file_path, file_name)?,
-        Stage::Validate => validate_stage(&file_path, file_name)?,
-        Stage::Tacky => tacky_stage(&file_path, file_name)?,
-        Stage::Codegen => codegen_stage(&file_path, file_name)?,
+        Stage::Lex => lexer_stage(pre_path)?,
+        Stage::Parse => parser_stage(pre_path, file_name)?,
+        Stage::Validate => validate_stage(pre_path, file_name)?,
+        Stage::Tacky => tacky_stage(pre_path, file_name)?,
+        Stage::Codegen => codegen_stage(pre_path, file_name)?,
+
         Stage::Asm => {
-            emit_assembly(&file_path, file_name)?;
-            ()
+            emit_assembly(pre_path, file_name)?;
         }
 
-        // produce exe files
-        Stage::None => {
-            let output_file_path = emit_assembly(&file_path, file_name)?;
-            compile_and_link_assembly_file(
-                &output_file_path,
-                remove_file_extension(&arg.file_path),
-            );
-            delete_file(&output_file_path);
-        }
-
-        // produce obj files
         Stage::Obj => {
-            let output_file_path = emit_assembly(&file_path, file_name)?;
-            let obj_file_path = format!("{}.o", remove_file_extension(&arg.file_path));
-            compile_assembly_file(&output_file_path, &obj_file_path);
-            delete_file(&output_file_path);
+            let asm_path = emit_assembly(pre_path, file_name)?;
+            let obj_path = format!("{}.o", remove_file_extension(&arg.file_path));
+            compile_assembly_file(&asm_path, &obj_path);
+            delete_file(&asm_path);
         }
-    };
-    delete_file(&file_path);
+
+        Stage::None => {
+            let asm_path = emit_assembly(pre_path, file_name)?;
+            let exe_path = remove_file_extension(&arg.file_path);
+            compile_and_link_assembly_file(&asm_path, exe_path);
+            delete_file(&asm_path);
+        }
+    }
+
     Ok(())
 }
