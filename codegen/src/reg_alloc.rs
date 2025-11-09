@@ -1,23 +1,31 @@
-use shared_context::symbol_table::IdenAttrs;
-use shared_context::symbol_table::SymbolTable;
+use shared_context::Identifier;
+use shared_context::OperandSize;
+use shared_context::asm_symbol_table::AsmSymbolEntry;
+use shared_context::asm_symbol_table::AsmSymbolTable;
 
-use crate::RegisterAllocation;
 use crate::asm;
 use std::collections::HashMap;
 
+// Stores the mapping from Tacky-level pseudo-registers to real registers or stack offsets.
+pub(super) struct RegisterAllocation<'ctx> {
+    pseudo_reg_map: HashMap<Identifier, i64>, // maps each variable to a register or stack slot
+    asm_symbol_table: &'ctx AsmSymbolTable,   // used to resolve which variables are static
+    sp_offset: i64,                           // current stack pointer offset (for spilled vars)
+}
+
 impl<'ctx> RegisterAllocation<'ctx> {
     /// Create a new RegisterAllocation instance
-    pub fn new(symbol_table: &'ctx SymbolTable) -> Self {
+    pub fn new(asm_symbol_table: &'ctx AsmSymbolTable) -> Self {
         Self {
             pseudo_reg_map: HashMap::new(), // Maps pseudo-register IDs to stack offsets
-            symbol_table,
+            asm_symbol_table,
             sp_offset: 0, // Tracks the current stack offset
         }
     }
 
     /// Round the stack pointer offset to the next multiple of 16.
     /// x86-64 ABI requires 16-byte alignment for stack before function calls.
-    fn get_sp_offset_rounded(&self) -> i32 {
+    fn get_sp_offset_rounded_to_16(&self) -> i64 {
         let n = -self.sp_offset; // positive size in bytes
         if n % 16 == 0 {
             return n;
@@ -49,8 +57,12 @@ impl<'ctx> RegisterAllocation<'ctx> {
         }
 
         // Reserve actual stack space at the start of function
-        function.get_mut_instructions()[0] =
-            asm::Instruction::AllocateStack(self.get_sp_offset_rounded());
+        function.get_mut_instructions()[0] = asm::Instruction::Binary {
+            op: asm::BinaryOP::Sub,
+            size: OperandSize::QuadWord,
+            src: asm::Operand::Immediate(self.get_sp_offset_rounded_to_16()),
+            dst: asm::Operand::Reg(asm::Register::SP),
+        };
 
         // Reset stack pointer offset for next function
         self.sp_offset = 0;
@@ -59,35 +71,45 @@ impl<'ctx> RegisterAllocation<'ctx> {
     /// Replace pseudo-register operands in an instruction with stack addresses.
     fn replace_pseudo_reg(&mut self, instruction: &mut asm::Instruction) {
         match instruction {
-            asm::Instruction::Mov { dst, src } => {
-                self.to_stack(dst);
-                self.to_stack(src);
+            asm::Instruction::Mov { size, dst, src } => {
+                self.to_stack(dst, *size);
+                self.to_stack(src, *size);
             }
 
-            asm::Instruction::Unary { op: _, dst } => {
-                self.to_stack(dst);
+            asm::Instruction::Unary { size, op: _, dst } => {
+                self.to_stack(dst, *size);
             }
 
-            asm::Instruction::Binary { op: _, src, dst } => {
-                self.to_stack(src);
-                self.to_stack(dst);
+            asm::Instruction::Binary {
+                size,
+                op: _,
+                src,
+                dst,
+            } => {
+                self.to_stack(src, *size);
+                self.to_stack(dst, *size);
             }
 
-            asm::Instruction::Idiv(src) => {
-                self.to_stack(src);
+            asm::Instruction::Idiv(size, src) => {
+                self.to_stack(src, *size);
             }
 
-            asm::Instruction::Cmp { src, dst } => {
-                self.to_stack(src);
-                self.to_stack(dst);
+            asm::Instruction::Cmp { size, src, dst } => {
+                self.to_stack(src, *size);
+                self.to_stack(dst, *size);
             }
 
             asm::Instruction::SetCC(_, src) => {
-                self.to_stack(src);
+                self.to_stack(src, OperandSize::LongWord);
             }
 
             asm::Instruction::Push(src) => {
-                self.to_stack(src);
+                self.to_stack(src, OperandSize::QuadWord);
+            }
+
+            asm::Instruction::Movsx { src, dst } => {
+                self.to_stack(src, OperandSize::QuadWord);
+                self.to_stack(dst, OperandSize::QuadWord);
             }
 
             // Instructions without pseudo-register operands are ignored
@@ -96,7 +118,7 @@ impl<'ctx> RegisterAllocation<'ctx> {
     }
 
     /// Convert a pseudo-register operand to a stack location if needed.
-    fn to_stack(&mut self, operand: &mut asm::Operand) {
+    fn to_stack(&mut self, operand: &mut asm::Operand, size: OperandSize) {
         if let asm::Operand::Pseudo(id) = operand {
             // Already mapped? Replace and return.
             if let Some(offset) = self.pseudo_reg_map.get(id) {
@@ -105,17 +127,32 @@ impl<'ctx> RegisterAllocation<'ctx> {
             }
 
             // Determine if this is a static/global or needs a stack slot.
-            let needs_stack = match self.symbol_table.get(*id) {
-                Some(entry) => !matches!(entry.attributes, IdenAttrs::StaticAttrs { .. }),
-                None => true,
+            let needs_stack = match self.asm_symbol_table.get(*id) {
+                // if it's not a static variable, then return true
+                AsmSymbolEntry::Obj { size: _, is_static } => !(*is_static),
+                AsmSymbolEntry::Fun { .. } => false,
             };
 
             if needs_stack {
-                self.sp_offset -= 4;
-                self.pseudo_reg_map.insert(*id, self.sp_offset);
-                *operand = asm::Operand::Stack(self.sp_offset);
+                self.allocate_stack(*id, operand, size);
             } else {
                 *operand = asm::Operand::Data(*id);
+            }
+        }
+    }
+
+    fn allocate_stack(&mut self, iden: Identifier, operand: &mut asm::Operand, size: OperandSize) {
+        match size {
+            OperandSize::LongWord => {
+                self.sp_offset -= 4;
+                self.pseudo_reg_map.insert(iden, self.sp_offset);
+                *operand = asm::Operand::Stack(self.sp_offset);
+            }
+            OperandSize::QuadWord => {
+                let alloc_amount = if (-self.sp_offset) % 8 == 0 { 8 } else { 12 };
+                self.sp_offset -= alloc_amount;
+                self.pseudo_reg_map.insert(iden, self.sp_offset);
+                *operand = asm::Operand::Stack(self.sp_offset);
             }
         }
     }

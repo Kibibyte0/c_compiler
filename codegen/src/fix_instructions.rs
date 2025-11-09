@@ -1,6 +1,7 @@
+use shared_context::OperandSize;
+
 use crate::InstructionFix;
-use crate::asm;
-use crate::asm::{Operand::Reg, Register};
+use crate::asm::{self, Instruction, Operand::Reg, Register};
 
 impl InstructionFix {
     /// Fix up all instructions in a program by replacing illegal operand combinations
@@ -47,141 +48,252 @@ impl InstructionFix {
         use asm::Instruction::*;
 
         match instr {
-            Mov { src, dst } => Self::fix_mov(src, dst, new_instructions),
-            Cmp { src, dst } => Self::fix_cmp(src, dst, new_instructions),
-            Binary { op, src, dst } => match op {
+            Mov { size, src, dst } => Self::fix_mov(size, src, dst, new_instructions),
+            Cmp { size, src, dst } => Self::fix_cmp(size, src, dst, new_instructions),
+            Binary { size, op, src, dst } => match op {
                 asm::BinaryOP::Add | asm::BinaryOP::Sub => {
-                    Self::fix_add_sub(op, src, dst, new_instructions)
+                    Self::fix_add_sub(size, op, src, dst, new_instructions)
                 }
-                asm::BinaryOP::Mul => Self::fix_mul(src, dst, new_instructions),
+                asm::BinaryOP::Mul => Self::fix_mul(size, src, dst, new_instructions),
             },
-            Idiv(src) => Self::fix_div(src, new_instructions),
+            Push(src) => Self::fix_push(src, new_instructions),
+            Movsx { src, dst } => Self::fix_movsx(src, dst, new_instructions),
+            Idiv(size, src) => Self::fix_div(size, src, new_instructions),
             // other instructions do not need fixing
             _ => false,
         }
     }
 
-    /// Fix MOV instructions when both operands are stack addresses.
-    /// Stack-to-stack MOV is illegal in x86_64, so use a temporary register.
-    fn fix_mov(
+    /// Fix Push instruction, when the source is an immediate that can't fit into 32 bits
+    fn fix_push(src: asm::Operand, new_instructions: &mut Vec<asm::Instruction>) -> bool {
+        use OperandSize::QuadWord;
+        use asm::Instruction::Push;
+        use asm::Register::R10;
+
+        let needs_fix = Self::is_immediate(src);
+
+        let fixed_src =
+            Self::mov_operand(src, R10, QuadWord, needs_fix, new_instructions).unwrap_or(src);
+
+        if needs_fix {
+            new_instructions.push(Push(fixed_src));
+        }
+
+        needs_fix
+    }
+
+    /// Fix Movsx instruction when either the source is immediate, the destination is Stack, or both
+    /// return True if an instruction fix happens, false otherwise
+    fn fix_movsx(
         src: asm::Operand,
         dst: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_mem(dst) && Self::is_mem(src) {
-            // Move src into temporary register R10
-            new_instructions.push(asm::Instruction::Mov {
-                src,
-                dst: asm::Operand::Reg(asm::Register::R10),
+        use Instruction::{Mov, Movsx};
+        use OperandSize::{LongWord, QuadWord};
+        use Register::{R10, R11};
+
+        let src_need_fix = Self::is_immediate(src);
+        let dst_need_fix = Self::is_mem(dst);
+        let need_fix = dst_need_fix || src_need_fix;
+
+        let fixed_src =
+            Self::mov_operand(src, R10, LongWord, src_need_fix, new_instructions).unwrap_or(src);
+        let fixed_dst = if dst_need_fix { Reg(R11) } else { dst };
+
+        if need_fix {
+            new_instructions.push(Movsx {
+                src: fixed_src,
+                dst: fixed_dst,
             });
-            // Move from R10 into dst
-            new_instructions.push(asm::Instruction::Mov {
-                src: asm::Operand::Reg(asm::Register::R10),
+
+            if dst_need_fix {
+                new_instructions.push(Mov {
+                    size: QuadWord,
+                    src: Reg(R11),
+                    dst,
+                });
+            }
+        }
+
+        need_fix
+    }
+
+    /// Fix MOV instructions when both operands are stack addresses.
+    /// Stack-to-stack MOV is illegal in x86_64, so use a temporary register.
+    fn fix_mov(
+        size: OperandSize,
+        src: asm::Operand,
+        dst: asm::Operand,
+        new_instructions: &mut Vec<asm::Instruction>,
+    ) -> bool {
+        use Instruction::Mov;
+        use Register::R10;
+
+        let need_fix = (Self::is_mem(dst) && Self::is_mem(src))
+            || (Self::is_large_immediate(src) && Self::is_mem(dst));
+        let fixed_src =
+            Self::mov_operand(src, R10, size, need_fix, new_instructions).unwrap_or(src);
+
+        if need_fix {
+            new_instructions.push(Mov {
+                size,
+                src: fixed_src,
                 dst,
             });
-            true
-        } else {
-            false
         }
+        need_fix
     }
 
     /// Fix ADD or SUB when both operands are stack addresses.
     /// Uses a temporary register R10 to hold one operand.
     fn fix_add_sub(
+        size: OperandSize,
         op: asm::BinaryOP,
         src: asm::Operand,
         dst: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_mem(dst) && Self::is_mem(src) {
-            new_instructions.push(asm::Instruction::Mov {
-                src,
-                dst: Reg(Register::R10),
-            });
-            new_instructions.push(asm::Instruction::Binary {
+        use Instruction::Binary;
+        use Register::R10;
+
+        let need_fix = (Self::is_mem(dst) && Self::is_mem(src)) || Self::is_large_immediate(src);
+        let fixed_src =
+            Self::mov_operand(src, R10, size, need_fix, new_instructions).unwrap_or(src);
+
+        if need_fix {
+            new_instructions.push(Binary {
+                size,
                 op,
-                src: Reg(Register::R10),
+                src: fixed_src,
                 dst,
             });
-            true
-        } else {
-            false
         }
+        need_fix
     }
 
-    /// Fix MUL instructions when destination is a stack address.
-    /// Use a temporary register R11 to hold the destination, then move back.
+    /// Fix MUL instructions when the destination is a stack address
+    /// or when the source is an immediate larger than i32::MAX.
+    /// Uses temporary registers R10 (for source) and R11 (for destination)
+    /// to ensure valid operands, moving the result back if needed.
     fn fix_mul(
+        size: OperandSize,
         src: asm::Operand,
         dst: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_mem(dst) {
-            new_instructions.push(asm::Instruction::Mov {
-                src: dst,
-                dst: Reg(Register::R11),
-            });
-            new_instructions.push(asm::Instruction::Binary {
+        use asm::Instruction::{Binary, Mov};
+        use asm::Register::{R10, R11};
+
+        let src_needs_fix = Self::is_large_immediate(src);
+        let dst_needs_fix = Self::is_mem(dst);
+        let needs_fix = src_needs_fix || dst_needs_fix;
+
+        let fixed_src =
+            Self::mov_operand(src, R10, size, src_needs_fix, new_instructions).unwrap_or(src);
+        let fixed_dst =
+            Self::mov_operand(dst, R11, size, dst_needs_fix, new_instructions).unwrap_or(dst);
+
+        if needs_fix {
+            new_instructions.push(Binary {
+                size,
                 op: asm::BinaryOP::Mul,
-                src,
-                dst: Reg(Register::R11),
+                src: fixed_src,
+                dst: fixed_dst,
             });
-            new_instructions.push(asm::Instruction::Mov {
-                src: Reg(Register::R11),
-                dst,
-            });
-            true
-        } else {
-            false
+
+            if dst_needs_fix {
+                new_instructions.push(Mov {
+                    size,
+                    src: Reg(R11),
+                    dst,
+                });
+            }
         }
+
+        needs_fix
     }
 
-    /// Fix IDIV instructions if the divisor is an immediate.
-    /// IDIV cannot take an immediate, so move it to R10 first.
-    fn fix_div(src: asm::Operand, new_instructions: &mut Vec<asm::Instruction>) -> bool {
-        if Self::is_immediate(src) {
-            new_instructions.push(asm::Instruction::Mov {
-                src,
-                dst: Reg(Register::R10),
-            });
-            new_instructions.push(asm::Instruction::Idiv(Reg(Register::R10)));
-            true
-        } else {
-            false
+    /// Fix IDIV instructions when the divisor is an immediate value.
+    /// Since IDIV cannot take an immediate operand, the immediate is first moved
+    /// into the temporary register R10, which is then used as the divisor.
+    fn fix_div(
+        size: OperandSize,
+        src: asm::Operand,
+        new_instructions: &mut Vec<asm::Instruction>,
+    ) -> bool {
+        use asm::Instruction::Idiv;
+        use asm::Register::R10;
+
+        let needs_fix = Self::is_immediate(src);
+
+        let fixed_src =
+            Self::mov_operand(src, R10, size, needs_fix, new_instructions).unwrap_or(src);
+
+        if needs_fix {
+            new_instructions.push(Idiv(size, fixed_src));
         }
+
+        needs_fix
     }
 
-    /// Fix CMP instructions if both operands are stack addresses or the second is an immediate.
-    /// CMP cannot have stack-to-stack or src-immediate dst combination.
+    /// Fix CMP instructions when both operands are memory addresses,
+    /// when the destination is an immediate,
+    /// or when the source is an immediate larger than i32::MAX.
+    /// Uses temporary registers R10 and R11 as needed to hold operands.
     fn fix_cmp(
+        size: OperandSize,
         src: asm::Operand,
         dst: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
     ) -> bool {
-        if Self::is_mem(src) && Self::is_mem(dst) {
-            // Use R10 as a temporary for src
-            new_instructions.push(asm::Instruction::Mov {
-                src,
-                dst: asm::Operand::Reg(asm::Register::R10),
+        use asm::Instruction::Cmp;
+        use asm::Register::{R10, R11};
+
+        let src_dst_mem = Self::is_mem(src) && Self::is_mem(dst);
+        let dst_imm = Self::is_immediate(dst);
+        let src_large_imm = Self::is_large_immediate(src);
+
+        let needs_fix = src_dst_mem || dst_imm || src_large_imm;
+
+        let fixed_src = Self::mov_operand(
+            src,
+            R10,
+            size,
+            src_dst_mem || src_large_imm,
+            new_instructions,
+        )
+        .unwrap_or(src);
+        let fixed_dst = Self::mov_operand(dst, R11, size, dst_imm, new_instructions).unwrap_or(dst);
+
+        if needs_fix {
+            new_instructions.push(Cmp {
+                size,
+                src: fixed_src,
+                dst: fixed_dst,
             });
-            new_instructions.push(asm::Instruction::Cmp {
-                src: asm::Operand::Reg(Register::R10),
-                dst,
+        }
+
+        needs_fix
+    }
+
+    /// fix an operand by moving it into a register
+    fn mov_operand(
+        operand: asm::Operand,
+        reg: Register,
+        size: OperandSize,
+        need_fix: bool,
+        new_instructions: &mut Vec<asm::Instruction>,
+    ) -> Option<asm::Operand> {
+        if need_fix {
+            new_instructions.push(Instruction::Mov {
+                size,
+                src: operand,
+                dst: Reg(reg),
             });
-            true
-        } else if Self::is_immediate(dst) {
-            // Use R11 as a temporary for dst
-            new_instructions.push(asm::Instruction::Mov {
-                src: dst,
-                dst: asm::Operand::Reg(asm::Register::R11),
-            });
-            new_instructions.push(asm::Instruction::Cmp {
-                src,
-                dst: asm::Operand::Reg(Register::R11),
-            });
-            true
+            Some(Reg(reg))
         } else {
-            false
+            None
         }
     }
 
@@ -193,5 +305,14 @@ impl InstructionFix {
     /// Helper: check if an operand is an immediate value
     fn is_immediate(op: asm::Operand) -> bool {
         matches!(op, asm::Operand::Immediate(_))
+    }
+
+    /// check if an Operand is an immediate that can't fit into 4 bytes
+    fn is_large_immediate(op: asm::Operand) -> bool {
+        if let asm::Operand::Immediate(int) = op {
+            if int > i32::MAX as i64 { true } else { false }
+        } else {
+            false
+        }
     }
 }

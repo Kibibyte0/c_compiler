@@ -1,7 +1,7 @@
 use codegen::asm;
-use shared_context::interner::Interner;
+use shared_context::symbol_interner::SymbolInterner;
 use shared_context::symbol_table::SymbolTable;
-use shared_context::{Identifier, StaticVariable};
+use shared_context::{Identifier, StaticInit, StaticVariable, Type};
 use std::fs::File;
 use std::io;
 
@@ -11,14 +11,14 @@ mod write_instructions;
 /// abstract representation
 pub struct Emitter<'a> {
     /// Reference to the interner, used to resolve symbols to strings.
-    interner: &'a Interner<'a>,
+    interner: &'a SymbolInterner<'a>,
     /// Reference to the symbol table, which stores variable/function symbols.
     symbol_table: &'a SymbolTable,
 }
 
 impl<'a> Emitter<'a> {
     /// Constructs a new `Emitter` with the given configuration.
-    pub fn new(interner: &'a Interner<'a>, symbol_table: &'a SymbolTable) -> Self {
+    pub fn new(interner: &'a SymbolInterner<'a>, symbol_table: &'a SymbolTable) -> Self {
         // Each indentation level corresponds to 4 spaces
         Self {
             interner,
@@ -74,25 +74,42 @@ impl<'a> Emitter<'a> {
         var_def: StaticVariable,
         out: &mut impl io::Write,
     ) -> io::Result<()> {
-        let (name, external, init) = var_def.into_parts();
+        let (name, external, var_type, init) = var_def.into_parts();
+
+        let static_type = if var_type == Type::Int {
+            "long"
+        } else {
+            "quad"
+        };
+
+        let alignment = if var_type == Type::Int { 4 } else { 8 };
+
+        let static_init = match init {
+            StaticInit::IntInit(int) => int as i64,
+            StaticInit::LongInit(long) => long,
+        };
 
         if external {
             writeln!(out, "\t.globl {}", self.format_identifier(name))?;
         }
 
         // if the initializer is zero, write into the bss seciton
-        if init == 0 {
+        if static_init == 0 {
             writeln!(
                 out,
-                "\t.bss\n\t.align 4\n{}:\n\t.zero 4",
+                "\t.bss\n\t.align {}\n{}:\n\t.zero {}",
+                alignment,
                 self.format_identifier(name),
+                alignment,
             )
         } else {
             writeln!(
                 out,
-                "\t.data\n\t.align 4\n{}:\n\t.long {}",
+                "\t.data\n\t.align {}\n{}:\n\t.{} {}",
+                alignment,
                 self.format_identifier(name),
-                init
+                static_type,
+                static_init,
             )
         }
     }

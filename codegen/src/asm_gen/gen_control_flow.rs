@@ -4,7 +4,7 @@ use shared_context::Identifier;
 use crate::asm;
 use crate::asm_gen::AsmGen;
 
-impl AsmGen {
+impl<'ctx, 'src> AsmGen<'ctx, 'src> {
     /// Emit an unconditional jump to the given target label.
     ///
     /// Corresponds directly to a single `jmp` instruction in x86-64.
@@ -18,11 +18,13 @@ impl AsmGen {
     /// 1. Compare the value with 0.
     /// 2. Jump to the target if the value is not equal to zero.
     pub(super) fn handle_jump_if_not_zero(
+        &self,
         pred: tacky::Value,
         tar: Identifier,
         asm_instructions: &mut Vec<asm::Instruction>,
     ) {
         asm_instructions.push(asm::Instruction::Cmp {
+            size: self.get_val_size(pred),
             src: asm::Operand::Immediate(0),
             dst: Self::convert_val(pred),
         });
@@ -35,11 +37,13 @@ impl AsmGen {
     /// 1. Compare the value with 0.
     /// 2. Jump to the target if the value is equal to zero.
     pub(super) fn handle_jump_if_zero(
+        &self,
         pred: tacky::Value,
         tar: Identifier,
         asm_instructions: &mut Vec<asm::Instruction>,
     ) {
         asm_instructions.push(asm::Instruction::Cmp {
+            size: self.get_val_size(pred),
             src: asm::Operand::Immediate(0),
             dst: Self::convert_val(pred),
         });

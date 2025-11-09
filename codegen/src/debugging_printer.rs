@@ -1,12 +1,12 @@
 use shared_context::Identifier;
-use shared_context::{StaticVariable, interner::Interner};
+use shared_context::{StaticVariable, symbol_interner::SymbolInterner};
 
 use crate::DebuggingPrinter;
 use crate::asm;
 
 impl<'a> DebuggingPrinter<'a> {
-    pub fn new(interner: &'a Interner<'a>) -> Self {
-        Self { interner }
+    pub fn new(sy_interner: &'a SymbolInterner<'a>) -> Self {
+        Self { sy_interner }
     }
 
     pub fn print(&self, program: asm::Program) {
@@ -22,7 +22,7 @@ impl<'a> DebuggingPrinter<'a> {
     }
 
     fn format_identifier(&self, identifier: Identifier) -> String {
-        format!("{}", self.interner.lookup(identifier.get_symbol()))
+        format!("{}", self.sy_interner.lookup(identifier.get_symbol()))
     }
 
     fn format_lickage(external: bool) -> &'static str {
@@ -30,14 +30,15 @@ impl<'a> DebuggingPrinter<'a> {
     }
 
     fn print_static_variable(&self, var_def: StaticVariable) {
-        let (name, external, init) = var_def.into_parts();
+        let (name, external, var_type, init) = var_def.into_parts();
 
         let indent = " ".repeat(2);
         println!(
-            "{}StaticVariable(name: {}, linkage:{}, init: {})",
+            "{}StaticVariable(name: {}, linkage:{}, type: {:?}, init: {:?})",
             indent,
             self.format_identifier(name),
             Self::format_lickage(external),
+            var_type,
             init
         )
     }
@@ -62,26 +63,38 @@ impl<'a> DebuggingPrinter<'a> {
         let indent = " ".repeat(4); // 4 spaces for indentation
 
         match instr {
-            asm::Instruction::Mov { src, dst } => {
-                println!("{}Mov(src: {:?}, dst: {:?})", indent, src, dst);
-            }
-            asm::Instruction::Unary { op, dst } => {
-                println!("{}Unary(op: {:?}, dst: {:?})", indent, op, dst);
-            }
-            asm::Instruction::Binary { op, src, dst } => {
+            asm::Instruction::Mov { size, src, dst } => {
                 println!(
-                    "{}Binary(op: {:?}, src: {:?}, dst: {:?})",
-                    indent, op, src, dst
+                    "{}Mov(size {:?}, src: {:?}, dst: {:?})",
+                    indent, size, src, dst
                 );
             }
-            asm::Instruction::Cmp { src, dst } => {
-                println!("{}Cmp(src: {:?}, dst: {:?})", indent, src, dst);
+            asm::Instruction::Movsx { src, dst } => {
+                println!("{}Movsx(src: {:?}, dst: {:?})", indent, src, dst)
             }
-            asm::Instruction::Idiv(src) => {
-                println!("{}Idiv(src: {:?})", indent, src);
+            asm::Instruction::Unary { size, op, dst } => {
+                println!(
+                    "{}Unary(size: {:?}, op: {:?}, dst: {:?})",
+                    indent, size, op, dst
+                );
             }
-            asm::Instruction::Cdq => {
-                println!("{}Cdq", indent);
+            asm::Instruction::Binary { size, op, src, dst } => {
+                println!(
+                    "{}Binary(size: {:?}, op: {:?}, src: {:?}, dst: {:?})",
+                    indent, size, op, src, dst
+                );
+            }
+            asm::Instruction::Cmp { size, src, dst } => {
+                println!(
+                    "{}Cmp(size: {:?}, src: {:?}, dst: {:?})",
+                    indent, size, src, dst
+                );
+            }
+            asm::Instruction::Idiv(size, src) => {
+                println!("{}Idiv(size: {:?}, src: {:?})", indent, size, src);
+            }
+            asm::Instruction::Cdq(size) => {
+                println!("{}Cdq(size: {:?})", indent, size);
             }
             asm::Instruction::Jmp(label) => {
                 println!("{}Jmp({:?})", indent, self.format_identifier(label));
@@ -99,12 +112,6 @@ impl<'a> DebuggingPrinter<'a> {
             }
             asm::Instruction::Label(label) => {
                 println!("{}Label({:?})", indent, self.format_identifier(label));
-            }
-            asm::Instruction::AllocateStack(size) => {
-                println!("{}AllocateStack({:?})", indent, size);
-            }
-            asm::Instruction::DeallocateStack(size) => {
-                println!("{}DeallocateStack({:?})", indent, size);
             }
             asm::Instruction::Ret => {
                 println!("{}Ret", indent);

@@ -1,5 +1,5 @@
 // Re-export Identifier so it can be used directly by users of this module.
-use shared_context::{Identifier, StaticVariable};
+use shared_context::{Identifier, OperandSize, StaticVariable};
 
 /// Represents an entire assembly-level program.
 ///
@@ -36,11 +36,6 @@ pub enum TopLevel {
 }
 
 /// Represents a single function in the generated assembly program.
-///
-/// Each function has:
-/// - a `name` (identifier)
-/// - type of linkage (external or internal)
-/// - a list of assembly `instructions`
 pub struct FunctionDef {
     name: Identifier,
     external: bool,
@@ -74,26 +69,45 @@ impl FunctionDef {
 #[derive(Clone, Copy)]
 pub enum Instruction {
     /// Move data from `src` to `dst`
-    Mov { src: Operand, dst: Operand },
+    Mov {
+        size: OperandSize,
+        src: Operand,
+        dst: Operand,
+    },
+
+    // used to sign extend a longword to quadword
+    Movsx {
+        src: Operand,
+        dst: Operand,
+    },
 
     /// Unary operation (e.g., `neg`, `not`)
-    Unary { op: UnaryOP, dst: Operand },
+    Unary {
+        op: UnaryOP,
+        size: OperandSize,
+        dst: Operand,
+    },
 
     /// Binary operation (e.g., `add`, `sub`, `mul`)
     Binary {
         op: BinaryOP,
+        size: OperandSize,
         src: Operand,
         dst: Operand,
     },
 
     /// Compare two operands (sets flags for conditional jumps)
-    Cmp { src: Operand, dst: Operand },
+    Cmp {
+        size: OperandSize,
+        src: Operand,
+        dst: Operand,
+    },
 
     /// Signed integer division
-    Idiv(Operand),
+    Idiv(OperandSize, Operand),
 
     /// Sign-extend `EAX` into `EDX:EAX` before division (`cdq`)
-    Cdq,
+    Cdq(OperandSize),
 
     /// Unconditional jump to label
     Jmp(Identifier),
@@ -106,12 +120,6 @@ pub enum Instruction {
 
     /// Marks a label within the instruction stream
     Label(Identifier),
-
-    /// Reserve stack space (e.g., `sub rsp, n`)
-    AllocateStack(i32),
-
-    /// Free stack space (e.g., `add rsp, n`)
-    DeallocateStack(i32),
 
     /// Push an operand onto the stack
     Push(Operand),
@@ -135,19 +143,19 @@ pub enum Cond {
 }
 
 /// Represents the types of operands that can appear in an instruction.
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum Operand {
     Reg(Register),      // Physical CPU register
     Pseudo(Identifier), // Compiler-generated pseudo-register (before allocation)
-    Stack(i32),         // Stack slot (offset from base pointer)
-    Immediate(i32),     // Immediate constant value
+    Stack(i64),         // Stack slot (offset from base pointer)
+    Immediate(i64),     // Immediate constant value
     Data(Identifier),   // For RIP relative addressing
 }
 
 /// Enumerates the general-purpose registers available for use.
 ///
 /// These correspond to x86-64 registers typically used for temporaries or arguments.
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum Register {
     AX,
     CX,
@@ -158,6 +166,7 @@ pub enum Register {
     R9,
     R10,
     R11,
+    SP,
 }
 
 /// Binary arithmetic operations supported in the assembly layer.

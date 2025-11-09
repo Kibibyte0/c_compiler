@@ -1,4 +1,5 @@
 use codegen::asm;
+use shared_context::OperandSize;
 
 use crate::Emitter;
 
@@ -21,6 +22,20 @@ impl<'a> Emitter<'a> {
         x86_operand
     }
 
+    pub(crate) fn convert_operand_size_to_suffix(size: OperandSize) -> &'static str {
+        match size {
+            OperandSize::LongWord => "l",
+            OperandSize::QuadWord => "q",
+        }
+    }
+
+    pub(crate) fn convert_operand_size_to_reg_size(size: OperandSize) -> usize {
+        match size {
+            OperandSize::LongWord => 4,
+            OperandSize::QuadWord => 8,
+        }
+    }
+
     pub(crate) fn convert_register(register: asm::Register, reg_size: usize) -> String {
         match reg_size {
             1 => Self::convert_1_byte_reg(register),
@@ -41,6 +56,7 @@ impl<'a> Emitter<'a> {
             asm::Register::R9 => "%r9".to_string(),
             asm::Register::R10 => "%r10".to_string(),
             asm::Register::R11 => "%r11".to_string(),
+            asm::Register::SP => "%rsp".to_string(),
         }
     }
 
@@ -55,6 +71,7 @@ impl<'a> Emitter<'a> {
             asm::Register::R9 => "%r9d".to_string(),
             asm::Register::R10 => "%r10d".to_string(),
             asm::Register::R11 => "%r11d".to_string(),
+            asm::Register::SP => "%esp".to_string(),
         }
     }
 
@@ -69,6 +86,7 @@ impl<'a> Emitter<'a> {
             asm::Register::R9 => "%r9b".to_string(),
             asm::Register::R10 => "%r10b".to_string(),
             asm::Register::R11 => "%r11b".to_string(),
+            asm::Register::SP => "%spl".to_string(),
         }
     }
 
@@ -85,16 +103,16 @@ impl<'a> Emitter<'a> {
 
     pub(crate) fn convert_unary_op(operator: asm::UnaryOP) -> String {
         match operator {
-            asm::UnaryOP::Neg => "negl".to_string(),
-            asm::UnaryOP::Not => "notl".to_string(),
+            asm::UnaryOP::Neg => "neg".to_string(),
+            asm::UnaryOP::Not => "not".to_string(),
         }
     }
 
     pub(crate) fn convert_binary_op(operator: asm::BinaryOP) -> String {
         match operator {
-            asm::BinaryOP::Add => "addl".to_string(),
-            asm::BinaryOP::Sub => "subl".to_string(),
-            asm::BinaryOP::Mul => "imull".to_string(),
+            asm::BinaryOP::Add => "add".to_string(),
+            asm::BinaryOP::Sub => "sub".to_string(),
+            asm::BinaryOP::Mul => "imul".to_string(),
         }
     }
 }

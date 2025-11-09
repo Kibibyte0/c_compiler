@@ -1,18 +1,24 @@
 use crate::AsmGen;
 use crate::{asm, asm::Operand, asm::Operand::Reg, asm::Register};
 use ir_gen::tacky;
-use shared_context::Identifier;
+use shared_context::symbol_table::EntryType;
+use shared_context::type_interner::FunctionType;
+use shared_context::{Const, OperandSize, Type};
+use shared_context::{
+    Identifier, convert_type_to_operand_size, symbol_table::SymbolTable,
+    type_interner::TypeInterner,
+};
 
 mod gen_control_flow;
 mod gen_operations;
 
 /// Implementation of the AsmGen struct, responsible for converting
 /// Tacky IR into an assembly-level intermediate representation (IR).
-impl AsmGen {
+impl<'ctx, 'src> AsmGen<'ctx, 'src> {
     /// Creates a new AsmGen instance, initializing the standard set
     /// of registers used for function arguments according to the
     /// System V AMD64 calling convention.
-    pub fn new() -> Self {
+    pub fn new(ty_interner: &'ctx TypeInterner<'src>, symbol_table: &'ctx SymbolTable) -> Self {
         let args_registers = vec![
             Register::DI,
             Register::SI,
@@ -21,7 +27,56 @@ impl AsmGen {
             Register::R8,
             Register::R9,
         ];
-        Self { args_registers }
+        Self {
+            ty_interner,
+            symbol_table,
+            args_registers,
+        }
+    }
+
+    /// returns the type of the function
+    fn get_function_type<'a>(&self, iden: Identifier) -> Option<&FunctionType<'src>> {
+        let entry = self.symbol_table.get(iden)?;
+        if let EntryType::Func(type_id) = entry.entry_type {
+            Some(self.ty_interner.get(type_id))
+        } else {
+            None
+        }
+    }
+
+    // returns the type of the variable
+    fn get_variable_type(&self, iden: Identifier) -> Option<Type> {
+        let entry = self.symbol_table.get(iden)?;
+        if let EntryType::Scalar(var_type) = entry.entry_type {
+            Some(var_type)
+        } else {
+            None
+        }
+    }
+
+    fn get_val_size(&self, val: tacky::Value) -> OperandSize {
+        match val {
+            tacky::Value::Constant(cons) => match cons {
+                Const::ConstInt(_) => OperandSize::LongWord,
+                Const::ConstLong(_) => OperandSize::QuadWord,
+            },
+            tacky::Value::Var(iden) => {
+                // at this point, it's guaranteed that the variable is in the symbol table
+                let var_type = self.get_variable_type(iden).unwrap();
+                convert_type_to_operand_size(var_type)
+            }
+        }
+    }
+
+    /// Converts a Tacky value into an assembly operand.
+    fn convert_val(val: tacky::Value) -> Operand {
+        match val {
+            tacky::Value::Var(identifier) => Operand::Pseudo(identifier),
+            tacky::Value::Constant(cons) => match cons {
+                Const::ConstInt(int) => Operand::Immediate(int as i64),
+                Const::ConstLong(long) => Operand::Immediate(long),
+            },
+        }
     }
 
     /// Entry point for assembly generation.
@@ -53,10 +108,15 @@ impl AsmGen {
 
         // Placeholder stack allocation — actual size determined during
         // register allocation pass (where spills are known).
-        asm_instructions.push(asm::Instruction::AllocateStack(0));
+        asm_instructions.push(asm::Instruction::Binary {
+            op: asm::BinaryOP::Sub,
+            size: OperandSize::QuadWord,
+            src: asm::Operand::Immediate(0),
+            dst: Reg(Register::SP),
+        });
 
         // Move function parameters into pseudo-registers (stack locals).
-        self.push_params_into_stack(params, &mut asm_instructions);
+        self.push_params_into_stack(name, params, &mut asm_instructions);
 
         // Translate each Tacky instruction into assembly.
         self.gen_instructions(tacky_instructions, &mut asm_instructions);
@@ -70,19 +130,24 @@ impl AsmGen {
     /// - Remaining ones are read from the stack, starting at offset 16.
     fn push_params_into_stack(
         &self,
+        iden: Identifier,
         params: Vec<Identifier>,
         asm_instructions: &mut Vec<asm::Instruction>,
     ) {
-        for (i, param) in params.iter().enumerate() {
+        // it is quaranteed that the function is in the symbol table at this stage
+        let fun_type = self.get_function_type(iden).unwrap();
+        for ((i, param), param_type) in params.iter().enumerate().zip(fun_type.params) {
             if i <= 5 {
                 asm_instructions.push(asm::Instruction::Mov {
+                    size: convert_type_to_operand_size(*param_type),
                     src: Reg(self.args_registers[i]),
                     dst: Operand::Pseudo(*param),
                 });
             } else {
                 // Stack parameters start after return address and saved base pointer.
-                let stack_index = 16 + ((i as i32) - 6) * 8;
+                let stack_index = 16 + ((i as i64) - 6) * 8;
                 asm_instructions.push(asm::Instruction::Mov {
+                    size: convert_type_to_operand_size(*param_type),
                     src: Operand::Stack(stack_index),
                     dst: Operand::Pseudo(*param),
                 });
@@ -98,10 +163,10 @@ impl AsmGen {
     ) {
         for tacky_instruction in tacky_instructions {
             match tacky_instruction {
-                tacky::Instruction::Ret(val) => Self::handle_ret(val, asm_instructions),
+                tacky::Instruction::Ret(val) => self.handle_ret(val, asm_instructions),
 
                 tacky::Instruction::Unary { op, src, dst } => {
-                    Self::handle_unary(op, src, dst, asm_instructions)
+                    self.handle_unary(op, src, dst, asm_instructions)
                 }
 
                 tacky::Instruction::Binary {
@@ -109,34 +174,69 @@ impl AsmGen {
                     src1,
                     src2,
                     dst,
-                } => Self::handle_binary(op, src1, src2, dst, asm_instructions),
+                } => self.handle_binary(op, src1, src2, dst, asm_instructions),
 
                 tacky::Instruction::Jump(tar) => Self::handle_jump(tar, asm_instructions),
 
                 tacky::Instruction::JumpIfZero(pred, tar) => {
-                    Self::handle_jump_if_zero(pred, tar, asm_instructions)
+                    self.handle_jump_if_zero(pred, tar, asm_instructions)
                 }
 
                 tacky::Instruction::JumpIfNotZero(pred, tar) => {
-                    Self::handle_jump_if_not_zero(pred, tar, asm_instructions)
+                    self.handle_jump_if_not_zero(pred, tar, asm_instructions)
                 }
 
                 tacky::Instruction::Label(tar) => Self::handle_label(tar, asm_instructions),
 
                 tacky::Instruction::Copy { src, dst } => {
-                    Self::handle_copy(src, dst, asm_instructions)
+                    self.handle_copy(src, dst, asm_instructions)
                 }
 
                 tacky::Instruction::FunCall { name, args, dst } => {
                     self.handle_function_call(name, args, dst, asm_instructions);
                 }
+                tacky::Instruction::SignExtend { src, dst } => {
+                    self.handle_sign_extention(src, dst, asm_instructions)
+                }
+                tacky::Instruction::Truncate { src, dst } => {
+                    self.handle_truncate(src, dst, asm_instructions);
+                }
             }
         }
     }
 
-    /// Handles return statements by moving the result into RAX and emitting `ret`.
-    fn handle_ret(val: tacky::Value, asm_instructions: &mut Vec<asm::Instruction>) {
+    /// Hanlde truncate instruction with a mov instruction of operand size 32 bits
+    /// this will truncate the quadword by copying only its lower half
+    fn handle_truncate(
+        &self,
+        src: tacky::Value,
+        dst: tacky::Value,
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
         asm_instructions.push(asm::Instruction::Mov {
+            size: OperandSize::LongWord,
+            src: Self::convert_val(src),
+            dst: Self::convert_val(dst),
+        });
+    }
+
+    /// Handle Sign extension instruction
+    fn handle_sign_extention(
+        &self,
+        src: tacky::Value,
+        dst: tacky::Value,
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
+        asm_instructions.push(asm::Instruction::Movsx {
+            src: Self::convert_val(src),
+            dst: Self::convert_val(dst),
+        });
+    }
+
+    /// Handles return statements by moving the result into RAX and emitting `ret`.
+    fn handle_ret(&self, val: tacky::Value, asm_instructions: &mut Vec<asm::Instruction>) {
+        asm_instructions.push(asm::Instruction::Mov {
+            size: self.get_val_size(val),
             dst: Reg(Register::AX),
             src: Self::convert_val(val),
         });
@@ -145,22 +245,16 @@ impl AsmGen {
 
     /// Handles copy (assignment) instructions by emitting a simple `mov`.
     fn handle_copy(
+        &self,
         src: tacky::Value,
         dst: tacky::Value,
         asm_instructions: &mut Vec<asm::Instruction>,
     ) {
         asm_instructions.push(asm::Instruction::Mov {
+            size: self.get_val_size(src),
             src: Self::convert_val(src),
             dst: Self::convert_val(dst),
         });
-    }
-
-    /// Converts a Tacky value into an assembly operand.
-    fn convert_val(val: tacky::Value) -> Operand {
-        match val {
-            tacky::Value::Var(identifier) => Operand::Pseudo(identifier),
-            tacky::Value::Constant(int) => Operand::Immediate(int),
-        }
     }
 
     /// Handles function calls according to the System V AMD64 calling convention.
@@ -183,7 +277,12 @@ impl AsmGen {
         // Stack must remain 16-byte aligned before a `call`.
         let stack_padding = Self::calculate_stack_padding(stack_args.len());
         if stack_padding != 0 {
-            asm_instructions.push(asm::Instruction::AllocateStack(stack_padding as i32));
+            asm_instructions.push(asm::Instruction::Binary {
+                op: asm::BinaryOP::Sub,
+                size: OperandSize::QuadWord,
+                src: asm::Operand::Immediate(stack_padding as i64),
+                dst: Reg(Register::SP),
+            });
         }
 
         // Move arguments into the appropriate registers.
@@ -217,6 +316,7 @@ impl AsmGen {
             let asm_arg = Self::convert_val(*tacky_arg);
             let register = Reg(self.args_registers[i]);
             asm_instructions.push(asm::Instruction::Mov {
+                size: self.get_val_size(*tacky_arg),
                 src: asm_arg,
                 dst: register,
             });
@@ -241,6 +341,7 @@ impl AsmGen {
                 // Otherwise, move into RAX first, then push (x86 requires a register source).
                 _ => {
                     asm_instructions.push(asm::Instruction::Mov {
+                        size: self.get_val_size(*tacky_arg),
                         src: asm_arg,
                         dst: Reg(Register::AX),
                     });
@@ -259,7 +360,12 @@ impl AsmGen {
     ) {
         let bytes_to_remove = 8 * stack_args_len + stack_padding;
         if bytes_to_remove != 0 {
-            asm_instructions.push(asm::Instruction::DeallocateStack(bytes_to_remove as i32));
+            asm_instructions.push(asm::Instruction::Binary {
+                op: asm::BinaryOP::Add,
+                size: OperandSize::QuadWord,
+                src: asm::Operand::Immediate(bytes_to_remove as i64),
+                dst: Reg(Register::SP),
+            });
         }
     }
 
@@ -271,6 +377,7 @@ impl AsmGen {
     ) {
         let asm_dst = Self::convert_val(tacky_dst);
         asm_instructions.push(asm::Instruction::Mov {
+            size: self.get_val_size(tacky_dst),
             src: Reg(Register::AX),
             dst: asm_dst,
         });
