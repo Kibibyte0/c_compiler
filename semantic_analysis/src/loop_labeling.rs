@@ -3,7 +3,7 @@ use crate::{
     semantic_error::{ErrorType, SemanticErr},
 };
 use parser::ast::*;
-use shared_context::{Identifier, Span, interner::Interner, source_map::SourceMap};
+use shared_context::{Identifier, Span, source_map::SourceMap, symbol_interner::SymbolInterner};
 
 impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     /// Creates a new loop labeling pass.
@@ -18,12 +18,12 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     /// 2. Ensures that `break` and `continue` statements appear only inside loops.
     /// 3. Associates each `break`/`continue` with the label of its nearest enclosing loop.
     pub fn new(
-        interner: &'ctx mut Interner<'src>,
+        sy_interner: &'ctx mut SymbolInterner<'src>,
         source_map: &'ctx SourceMap<'src>,
         label_counter: usize,
     ) -> Self {
         Self {
-            interner,
+            sy_interner,
             source_map,
             label_counter,
         }
@@ -36,7 +36,7 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     fn make_label(&mut self) -> Identifier {
         let s = format!("label_{}", self.label_counter);
         self.label_counter += 1;
-        let symbol = self.interner.intern(&s);
+        let symbol = self.sy_interner.intern(&s);
         Identifier::new(symbol, 0)
     }
 
@@ -70,7 +70,7 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     /// - Recursively labels all loops inside the function body.
     /// - Propagates `SemanticErr` if an invalid `break` or `continue` is found.
     fn label_function_decl(&mut self, function: FunctionDecl) -> Result<FunctionDecl, SemanticErr> {
-        let (name, params, body, storage_class, span) = function.into_parts();
+        let (name, type_id, params, body, storage_class, span) = function.into_parts();
         let labeled_body = if let Some(block) = body {
             match self.label_block(block, None) {
                 Ok(block) => Some(block),
@@ -81,6 +81,7 @@ impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
         };
         Ok(FunctionDecl::new(
             name,
+            type_id,
             params,
             labeled_body,
             storage_class,

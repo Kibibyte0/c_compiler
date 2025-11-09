@@ -2,7 +2,7 @@ use super::ResolverContext;
 use crate::IdentifierResolver;
 use crate::semantic_error::ErrorType;
 use parser::ast::*;
-use shared_context::SpannedIdentifier;
+use shared_context::{SpannedIdentifier, Type};
 
 impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
     /// Resolves an expression by recursively resolving all sub-expressions.
@@ -15,35 +15,38 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         expr: Expression,
         resolver_ctx: &mut ResolverContext,
     ) -> Result<Expression, ErrorType> {
-        let (expr_type, span) = expr.into_parts();
+        let (inner, expr_type, span) = expr.into_parts();
 
-        let resolved_expr_type = match expr_type {
-            ExpressionType::Assignment { lvalue, rvalue } => {
+        let resolved_inner = match inner {
+            InnerExpression::Assignment { lvalue, rvalue } => {
                 self.resolve_assignment(*lvalue, *rvalue, resolver_ctx)?
             }
-            ExpressionType::Var(name) => self.resolve_variable(name, resolver_ctx)?,
-            ExpressionType::Binary {
+            InnerExpression::Var(name) => self.resolve_variable(name, resolver_ctx)?,
+            InnerExpression::Binary {
                 operator,
                 operand1,
                 operand2,
             } => self.resolve_binary(operator, *operand1, *operand2, resolver_ctx)?,
-            ExpressionType::Unary { operator, operand } => {
+            InnerExpression::Unary { operator, operand } => {
                 self.resolve_unary(operator, *operand, resolver_ctx)?
             }
-            ExpressionType::Constant(int) => ExpressionType::Constant(int),
-            ExpressionType::Conditional { cond, cons, alt } => {
+            InnerExpression::Constant(int) => InnerExpression::Constant(int),
+            InnerExpression::Conditional { cond, cons, alt } => {
                 self.resolve_condtional(*cond, *cons, *alt, resolver_ctx)?
             }
-            ExpressionType::FunctionCall { name, args } => {
+            InnerExpression::FunctionCall { name, args } => {
                 self.resolve_function_call(name, args, resolver_ctx)?
+            }
+            InnerExpression::Cast { target_type, expr } => {
+                self.resolve_cast_expression(*expr, target_type, resolver_ctx)?
             }
         };
 
-        Ok(Expression::new(resolved_expr_type, span))
+        Ok(Expression::new(resolved_inner, expr_type, span))
     }
 
     /// Resolves an optional expression (may be `None`), returning a resolved `Option`.
-    pub(crate) fn resolve_optional_expr(
+    pub(super) fn resolve_optional_expr(
         &mut self,
         optional_expr: Option<Expression>,
         resolver_ctx: &mut ResolverContext,
@@ -54,6 +57,20 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         }
     }
 
+    /// resolve a cast expression. (e.g., `(long) 12`)
+    fn resolve_cast_expression(
+        &mut self,
+        expr: Expression,
+        target_type: Type,
+        resolver_ctx: &mut ResolverContext,
+    ) -> Result<InnerExpression, ErrorType> {
+        let resolved_expr = self.resolve_expression(expr, resolver_ctx)?;
+        Ok(InnerExpression::Cast {
+            target_type,
+            expr: Box::new(resolved_expr),
+        })
+    }
+
     /// Resolves an assignment expression.
     ///
     /// Ensures that the left-hand side is a valid l-value (currently only variables).
@@ -62,17 +79,17 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         lvalue: Expression,
         rvalue: Expression,
         resolver_ctx: &mut ResolverContext,
-    ) -> Result<ExpressionType, ErrorType> {
-        let lexpr_type = lvalue.get_expr_type_ref();
+    ) -> Result<InnerExpression, ErrorType> {
+        let lexpr_type = lvalue.get_inner_ref();
 
         // Only variables can be assigned to
         match lexpr_type {
-            ExpressionType::Var(_) => Ok(ExpressionType::Assignment {
+            InnerExpression::Var(_) => Ok(InnerExpression::Assignment {
                 lvalue: Box::new(self.resolve_expression(lvalue, resolver_ctx)?),
                 rvalue: Box::new(self.resolve_expression(rvalue, resolver_ctx)?),
             }),
             _ => {
-                let (_, lspan) = lvalue.into_parts();
+                let lspan = lvalue.get_span();
                 Err(ErrorType::InvalidLeftValue(lspan))
             }
         }
@@ -85,12 +102,12 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         &mut self,
         name: SpannedIdentifier,
         resolver_ctx: &ResolverContext,
-    ) -> Result<ExpressionType, ErrorType> {
+    ) -> Result<InnerExpression, ErrorType> {
         let (identifier, span) = name.into_parts();
         let symbol = identifier.get_symbol();
 
         if let Some(prev_entry) = resolver_ctx.search_scope(&symbol) {
-            Ok(ExpressionType::Var(prev_entry.get_sp_identifier()))
+            Ok(InnerExpression::Var(prev_entry.get_sp_identifier()))
         } else {
             Err(ErrorType::UseOfUndeclared(span))
         }
@@ -105,8 +122,8 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         operand1: Expression,
         operand2: Expression,
         resolver_ctx: &mut ResolverContext,
-    ) -> Result<ExpressionType, ErrorType> {
-        Ok(ExpressionType::Binary {
+    ) -> Result<InnerExpression, ErrorType> {
+        Ok(InnerExpression::Binary {
             operator,
             operand1: Box::new(self.resolve_expression(operand1, resolver_ctx)?),
             operand2: Box::new(self.resolve_expression(operand2, resolver_ctx)?),
@@ -121,8 +138,8 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         operator: UnaryOP,
         operand: Expression,
         resolver_ctx: &mut ResolverContext,
-    ) -> Result<ExpressionType, ErrorType> {
-        Ok(ExpressionType::Unary {
+    ) -> Result<InnerExpression, ErrorType> {
+        Ok(InnerExpression::Unary {
             operator,
             operand: Box::new(self.resolve_expression(operand, resolver_ctx)?),
         })
@@ -137,12 +154,12 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         cons: Expression,
         alt: Expression,
         resolver_ctx: &mut ResolverContext,
-    ) -> Result<ExpressionType, ErrorType> {
+    ) -> Result<InnerExpression, ErrorType> {
         let cond = Box::new(self.resolve_expression(cond, resolver_ctx)?);
         let cons = Box::new(self.resolve_expression(cons, resolver_ctx)?);
         let alt = Box::new(self.resolve_expression(alt, resolver_ctx)?);
 
-        Ok(ExpressionType::Conditional { cond, cons, alt })
+        Ok(InnerExpression::Conditional { cond, cons, alt })
     }
 
     /// Resolves a function call.
@@ -153,7 +170,7 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         name: SpannedIdentifier,
         args: Vec<Box<Expression>>,
         resolver_ctx: &mut ResolverContext,
-    ) -> Result<ExpressionType, ErrorType> {
+    ) -> Result<InnerExpression, ErrorType> {
         let symbol = name.get_identifier().get_symbol();
 
         if let Some(prev_entry) = resolver_ctx.search_scope(&symbol) {
@@ -162,7 +179,7 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
                 resolved_args.push(Box::new(self.resolve_expression(*arg, resolver_ctx)?));
             }
 
-            Ok(ExpressionType::FunctionCall {
+            Ok(InnerExpression::FunctionCall {
                 // use the name of the previous entry, this is a delibertate design choice
                 // this will help the typechecker catch errors like using a variable as a function
                 name: prev_entry.get_sp_identifier(),

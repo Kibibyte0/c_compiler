@@ -1,11 +1,12 @@
+use crate::IdentifierResolver;
+use crate::identifier_resolution::{ResolverContext, ResolverEntry};
 use crate::semantic_error::ErrorType;
-use crate::{IdentifierResolver, ResolverContext, ResolverEntry};
-use parser::ast::*;
+use parser::ast::{Block, Declaration, FunctionDecl, StorageClass, VariableDecl};
 use shared_context::{Identifier, SpannedIdentifier};
 
 impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
     /// resolve a global declaration
-    pub(crate) fn resolve_global_declaration(
+    pub(super) fn resolve_global_declaration(
         &mut self,
         decl: Declaration,
         resolver_ctx: &mut ResolverContext,
@@ -23,7 +24,7 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
     /// Resolves a local declaration (function or variable).
     ///
     /// Nested function definitions are not allowed in C, so they generate an error.
-    pub(crate) fn resolve_local_declaration(
+    pub(super) fn resolve_local_declaration(
         &mut self,
         decl: Declaration,
         resolver_ctx: &mut ResolverContext,
@@ -62,18 +63,24 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
     }
 
     /// Resolves a local variable declaration by resolving its identifier and initialization expression.
-    pub(crate) fn resolve_local_variable_declaration(
+    pub(super) fn resolve_local_variable_declaration(
         &mut self,
         var_decl: VariableDecl,
         resolver_ctx: &mut ResolverContext,
     ) -> Result<VariableDecl, ErrorType> {
-        let (name, mut init, storage_class, span) = var_decl.into_parts();
+        let (name, var_type, mut init, storage_class, span) = var_decl.into_parts();
         let resolved_name =
             self.resolve_variable_declaration_identifier(name, storage_class, resolver_ctx)?;
         if let Some(expr) = init {
             init = Some(self.resolve_expression(expr, resolver_ctx)?);
         }
-        Ok(VariableDecl::new(resolved_name, init, storage_class, span))
+        Ok(VariableDecl::new(
+            resolved_name,
+            var_type,
+            init,
+            storage_class,
+            span,
+        ))
     }
 
     /// Resolves a variable declaration's identifier.
@@ -122,7 +129,7 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
         function: FunctionDecl,
         resolver_ctx: &mut ResolverContext,
     ) -> Result<FunctionDecl, ErrorType> {
-        let (name, params, body, storage_class, span) = function.into_parts();
+        let (name, var_type, params, body, storage_class, span) = function.into_parts();
         let symbol = name.get_identifier().get_symbol();
 
         // Check if an identifier with the same name already exists in the current scope
@@ -151,6 +158,7 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
 
         Ok(FunctionDecl::new(
             name,
+            var_type,
             resolved_params,
             resolved_body,
             storage_class,

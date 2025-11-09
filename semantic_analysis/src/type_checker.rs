@@ -3,7 +3,11 @@ use crate::{
     semantic_error::{ErrorType, SemanticErr},
 };
 use parser::ast::*;
-use shared_context::{source_map::SourceMap, symbol_table::SymbolTable};
+use shared_context::{
+    source_map::SourceMap,
+    symbol_table::SymbolTable,
+    type_interner::{FuncTypeId, TypeInterner},
+};
 
 mod typecheck_expressions;
 mod typecheck_functions;
@@ -23,8 +27,13 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     /// 1. Every expression and statement is type-consistent.
     /// 2. All variable and function references adhere to declared types.
     /// 3. No invalid operations occur between incompatible types.
-    pub fn new(symbol_table: &'ctx mut SymbolTable, source_map: &'ctx SourceMap<'src>) -> Self {
+    pub fn new(
+        symbol_table: &'ctx mut SymbolTable,
+        ty_interner: &'ctx TypeInterner<'src>,
+        source_map: &'ctx SourceMap<'src>,
+    ) -> Self {
         Self {
+            ty_interner,
             symbol_table,
             source_map,
         }
@@ -51,22 +60,27 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     }
 
     /// Recursively type checks all statements and declarations in a block.
-    fn typecheck_block(&mut self, block: Block) -> Result<Block, ErrorType> {
+    /// curr_fun store the ID the current enclosing function, this is used to typecheck return statements
+    fn typecheck_block(&mut self, block: Block, curr_fun: FuncTypeId) -> Result<Block, ErrorType> {
         let (block_items, span) = block.into_parts();
         let mut checked_block_items = Vec::new();
 
         for item in block_items {
-            checked_block_items.push(self.typecheck_block_item(item)?);
+            checked_block_items.push(self.typecheck_block_item(item, curr_fun)?);
         }
 
         Ok(Block::new(checked_block_items, span))
     }
 
     /// Type checks a single block item.
-    fn typecheck_block_item(&mut self, item: BlockItem) -> Result<BlockItem, ErrorType> {
+    fn typecheck_block_item(
+        &mut self,
+        item: BlockItem,
+        curr_fun: FuncTypeId,
+    ) -> Result<BlockItem, ErrorType> {
         match item {
             BlockItem::D(decl) => Ok(BlockItem::D(self.typecheck_local_declaration(decl)?)),
-            BlockItem::S(stmt) => Ok(BlockItem::S(self.typecheck_statement(stmt)?)),
+            BlockItem::S(stmt) => Ok(BlockItem::S(self.typecheck_statement(stmt, curr_fun)?)),
         }
     }
 

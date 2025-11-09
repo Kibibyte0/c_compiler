@@ -1,5 +1,5 @@
 use crate::IdentifierResolver;
-use crate::ResolverContext;
+use crate::identifier_resolution::ResolverContext;
 use crate::semantic_error::ErrorType;
 use parser::ast::StorageClass;
 use parser::ast::{Expression, ForInit, Statement, StatementType};
@@ -11,7 +11,7 @@ impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
     /// This includes return statements, expression statements, compound blocks, loops,
     /// conditionals, and for-loop initializations. All identifiers within the statement
     /// are checked against the current scopes in `resolver_ctx`.
-    pub(crate) fn resolve_statement(
+    pub(super) fn resolve_statement(
         &mut self,
         stmt: Statement,
         resolver_ctx: &mut ResolverContext,

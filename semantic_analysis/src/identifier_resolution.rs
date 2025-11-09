@@ -1,11 +1,92 @@
+use crate::IdentifierResolver;
 use crate::semantic_error::{ErrorType, SemanticErr};
-use crate::{IdentifierResolver, ResolverContext};
 use parser::ast::*;
-use shared_context::source_map::SourceMap;
+use shared_context::{SpannedIdentifier, source_map::SourceMap, symbol_interner::Symbol};
+use std::collections::{HashMap, VecDeque};
 
 mod resolve_declaration;
 mod resolve_expressions;
 mod resolve_statements;
+
+/// Represents an entry in the identifier resolver.
+/// Keeps track of the identifier's source info and whether it has linkage (global/static).
+#[derive(Clone, Copy)]
+struct ResolverEntry {
+    sp_identifier: SpannedIdentifier,
+    linkage: bool,
+}
+
+impl ResolverEntry {
+    /// Create a new resolver entry with the given identifier and linkage flag
+    pub fn new(sp_identifier: SpannedIdentifier, linkage: bool) -> Self {
+        Self {
+            sp_identifier,
+            linkage,
+        }
+    }
+
+    /// Returns true if the identifier has linkage (i.e., visible outside current scope)
+    pub fn has_linkage(&self) -> bool {
+        self.linkage
+    }
+
+    /// Returns the original spanned identifier
+    pub fn get_sp_identifier(&self) -> SpannedIdentifier {
+        self.sp_identifier
+    }
+}
+
+/// Maintains a stack of scopes for identifier resolution.
+/// Each scope maps a symbol to its corresponding resolver entry.
+struct ResolverContext {
+    scopes: VecDeque<HashMap<Symbol, ResolverEntry>>,
+}
+
+impl ResolverContext {
+    /// Create a new, empty resolver context
+    fn new() -> Self {
+        Self {
+            scopes: VecDeque::new(),
+        }
+    }
+
+    /// Push a new scope on top of the stack
+    fn create_scope(&mut self) {
+        self.scopes.push_front(HashMap::new());
+    }
+
+    /// Remove the topmost scope from the stack
+    fn delete_scope(&mut self) {
+        self.scopes.pop_front();
+    }
+
+    /// Insert a new symbol-to-entry mapping in the current scope
+    fn insert_entry(&mut self, key: Symbol, value: ResolverEntry) {
+        self.scopes
+            .front_mut()
+            .expect("resolver context is empty")
+            .insert(key, value);
+    }
+
+    /// Search all scopes (starting from innermost) for a symbol
+    fn search_scope(&self, key: &Symbol) -> Option<ResolverEntry> {
+        for scope in &self.scopes {
+            if let Some(name) = scope.get(key) {
+                return Some(*name);
+            }
+        }
+        None
+    }
+
+    /// Search only the current (innermost) scope for a symbol
+    fn search_current_scope(&self, key: &Symbol) -> Option<ResolverEntry> {
+        self.scopes
+            .front()
+            .expect("resolver context is empty")
+            .get(key)
+            .cloned()
+    }
+}
 
 impl<'src, 'ctx> IdentifierResolver<'src, 'ctx> {
     /// Creates a new `IdentifierResolver` instance.
