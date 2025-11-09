@@ -12,33 +12,17 @@
 use crate::IRgen;
 use crate::tacky;
 use parser::ast::{self};
+use shared_context::{Const, Type};
 
 impl<'a, 'b> IRgen<'a, 'b> {
     /// Generates short-circuiting logic for a logical AND expression.
-    ///
-    /// ```
-    /// result = (a && b)
-    /// ```
-    ///
-    /// IR outline:
-    /// ```
-    ///   val1 = <evaluate a>
-    ///   jump_if_zero val1, false_label
-    ///   val2 = <evaluate b>
-    ///   jump_if_zero val2, false_label
-    ///   result = 1
-    ///   jump end_label
-    /// false_label:
-    ///   result = 0
-    /// end_label:
-    /// ```
     pub(super) fn gen_logical_and(
         &mut self,
         operand1: ast::Expression,
         operand2: ast::Expression,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
-        let result_var = self.make_temp_var();
+        let result_var = self.make_temp_var(Type::Int);
         let false_label = self.make_label();
         let end_label = self.make_label();
 
@@ -54,19 +38,19 @@ impl<'a, 'b> IRgen<'a, 'b> {
         // If second operand is also false, jump to false branch
         instructions.push(tacky::Instruction::JumpIfZero(val2, false_label));
 
-        // Both operands non-zero → result = 1 (true)
+        // Both operands non-zero -> result = 1 (true)
         instructions.push(tacky::Instruction::Copy {
-            src: tacky::Value::Constant(1),
+            src: tacky::Value::Constant(Const::ConstInt(1)),
             dst: result_var,
         });
 
         // Skip false branch
         instructions.push(tacky::Instruction::Jump(end_label));
 
-        // False branch → result = 0 (false)
+        // False branch -> result = 0 (false)
         instructions.push(tacky::Instruction::Label(false_label));
         instructions.push(tacky::Instruction::Copy {
-            src: tacky::Value::Constant(0),
+            src: tacky::Value::Constant(Const::ConstInt(0)),
             dst: result_var,
         });
 
@@ -77,30 +61,13 @@ impl<'a, 'b> IRgen<'a, 'b> {
     }
 
     /// Generates short-circuiting logic for a logical OR expression.
-    ///
-    /// ```
-    /// result = (a || b)
-    /// ```
-    ///
-    /// IR outline:
-    /// ```
-    ///   val1 = <evaluate a>
-    ///   jump_if_not_zero val1, true_label
-    ///   val2 = <evaluate b>
-    ///   jump_if_not_zero val2, true_label
-    ///   result = 0
-    ///   jump end_label
-    /// true_label:
-    ///   result = 1
-    /// end_label:
-    /// ```
     pub(super) fn gen_logical_or(
         &mut self,
         operand1: ast::Expression,
         operand2: ast::Expression,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
-        let result_var = self.make_temp_var();
+        let result_var = self.make_temp_var(Type::Int);
         let true_label = self.make_label();
         let end_label = self.make_label();
 
@@ -116,19 +83,19 @@ impl<'a, 'b> IRgen<'a, 'b> {
         // If second operand is true, jump to true branch
         instructions.push(tacky::Instruction::JumpIfNotZero(val2, true_label));
 
-        // Both operands false → result = 0
+        // Both operands false -> result = 0
         instructions.push(tacky::Instruction::Copy {
-            src: tacky::Value::Constant(0),
+            src: tacky::Value::Constant(Const::ConstInt(0)),
             dst: result_var,
         });
 
         // Skip true branch
         instructions.push(tacky::Instruction::Jump(end_label));
 
-        // True branch → result = 1
+        // True branch -> result = 1
         instructions.push(tacky::Instruction::Label(true_label));
         instructions.push(tacky::Instruction::Copy {
-            src: tacky::Value::Constant(1),
+            src: tacky::Value::Constant(Const::ConstInt(1)),
             dst: result_var,
         });
 

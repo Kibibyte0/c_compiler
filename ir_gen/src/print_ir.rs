@@ -1,16 +1,16 @@
-use shared_context::{Identifier, StaticVariable, interner::Interner};
+use shared_context::{Identifier, StaticVariable, symbol_interner::SymbolInterner};
 
 use crate::tacky::{self, Value};
 
 pub struct DebuggingPrinter<'src, 'ctx> {
-    interner: &'ctx Interner<'src>,
+    sy_interner: &'ctx SymbolInterner<'src>,
 }
 
 // a printer for the IR, for debugging
 
 impl<'src, 'ctx> DebuggingPrinter<'src, 'ctx> {
-    pub fn new(interner: &'ctx Interner<'src>) -> Self {
-        Self { interner }
+    pub fn new(sy_interner: &'ctx SymbolInterner<'src>) -> Self {
+        Self { sy_interner }
     }
 
     pub fn print(&self, program: tacky::Program) {
@@ -27,25 +27,26 @@ impl<'src, 'ctx> DebuggingPrinter<'src, 'ctx> {
 
     fn format_identifier(&self, identifier: Identifier) -> String {
         let (symbol, id) = identifier.into_parts();
-        format!("{}.{}", self.interner.lookup(symbol), id)
+        format!("{}.{}", self.sy_interner.lookup(symbol), id)
     }
 
     fn format_value(&self, val: tacky::Value) -> String {
         match val {
-            tacky::Value::Constant(int) => format!("{}", int),
+            tacky::Value::Constant(int) => format!("{:?}", int),
             tacky::Value::Var(id) => format!("{}", self.format_identifier(id)),
         }
     }
 
     fn print_static_variable(&self, var_def: StaticVariable) {
-        let (name, external, init) = var_def.into_parts();
+        let (name, external, var_type, init) = var_def.into_parts();
 
         let indent = " ".repeat(2);
         println!(
-            "{}StaticVariable(name: {}, linkage:{}, init: {})",
+            "{}StaticVariable(name: {}, linkage:{}, type: {:?}, init: {:?})",
             indent,
             self.format_identifier(name),
             Self::format_lickage(external),
+            var_type,
             init
         )
     }
@@ -104,7 +105,28 @@ impl<'src, 'ctx> DebuggingPrinter<'src, 'ctx> {
             tacky::Instruction::FunCall { name, args, dst } => {
                 self.print_function_call(name, args, dst, indent);
             }
+
+            tacky::Instruction::SignExtend { src, dst } => self.print_sign_extend(src, dst, indent),
+            tacky::Instruction::Truncate { src, dst } => self.print_truncate(src, dst, indent),
         }
+    }
+
+    fn print_sign_extend(&self, src: Value, dst: Value, indent: String) {
+        println!(
+            "{}SignExtend(src: {}, dst: {})",
+            indent,
+            self.format_value(src),
+            self.format_value(dst)
+        )
+    }
+
+    fn print_truncate(&self, src: Value, dst: Value, indent: String) {
+        println!(
+            "{}Truncate(src: {}, dst: {})",
+            indent,
+            self.format_value(src),
+            self.format_value(dst)
+        )
     }
 
     fn print_function_call(&self, name: Identifier, args: Vec<Value>, dst: Value, indent: String) {

@@ -7,9 +7,9 @@
 
 use parser::ast::{self, StorageClass};
 use shared_context::{
-    Identifier, StaticVariable,
-    interner::Interner,
-    symbol_table::{IdenAttrs, InitValue, SymbolTable},
+    Const, Identifier, Span, StaticVariable, Type, get_tentative_init,
+    symbol_interner::SymbolInterner,
+    symbol_table::{EntryType, IdenAttrs, InitValue, SymbolTable},
 };
 
 use crate::tacky::TopLevel;
@@ -23,11 +23,11 @@ pub mod tacky;
 /// Consumes an AST and produce a tacky program
 pub fn lower_to_tacky(
     program: ast::Program,
-    interner: &mut Interner,
-    symbol_table: &SymbolTable,
+    sy_interner: &mut SymbolInterner,
+    symbol_table: &mut SymbolTable,
     var_counter: usize,
 ) -> tacky::Program {
-    let mut ir_gen = IRgen::new(var_counter, interner, symbol_table);
+    let mut ir_gen = IRgen::new(var_counter, sy_interner, symbol_table);
     let program_tacky = ir_gen.gen_tacky(program);
     program_tacky
 }
@@ -42,34 +42,40 @@ pub struct IRgen<'src, 'ctx> {
     /// Counter used to generate unique temporary variables and labels.
     var_counter: usize,
 
-    /// Reference to the string interner used to manage symbol deduplication.
-    interner: &'ctx mut Interner<'src>,
-    symbol_table: &'ctx SymbolTable,
+    /// Reference to the symbol interner used to manage symbol deduplication.
+    sy_interner: &'ctx mut SymbolInterner<'src>,
+    symbol_table: &'ctx mut SymbolTable,
 }
 
 impl<'src, 'ctx> IRgen<'src, 'ctx> {
     /// Creates a new IR generator instance.
     pub fn new(
         var_counter: usize,
-        interner: &'ctx mut Interner<'src>,
-        symbol_table: &'ctx SymbolTable,
+        sy_interner: &'ctx mut SymbolInterner<'src>,
+        symbol_table: &'ctx mut SymbolTable,
     ) -> Self {
         Self {
             var_counter,
-            interner,
+            sy_interner,
             symbol_table,
         }
     }
 
     /// Creates a new temporary variable (e.g., `tmp.0`, `tmp.1`, …)
-    /// and returns it as a tacky::Value::Var.
+    /// it stores the variable in the symbol table and returns it as a tacky::Value::Var.
     ///
     /// Used to hold intermediate computation results during expression lowering.
-    fn make_temp_var(&mut self) -> tacky::Value {
+    fn make_temp_var(&mut self, var_type: Type) -> tacky::Value {
         let s = format!("tmp.{}", self.var_counter);
         self.var_counter += 1;
-        let symbol = self.interner.intern(&s);
+        let symbol = self.sy_interner.intern(&s);
         let temp_id = Identifier::new(symbol, 0);
+        self.symbol_table.add(
+            temp_id,
+            EntryType::Scalar(var_type),
+            IdenAttrs::LocalAttrs,
+            Span::default(),
+        );
         tacky::Value::Var(temp_id)
     }
 
@@ -79,7 +85,7 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     fn make_label(&mut self) -> Identifier {
         let s = format!("label_{}", self.var_counter);
         self.var_counter += 1;
-        let symbol = self.interner.intern(&s);
+        let symbol = self.sy_interner.intern(&s);
         Identifier::new(symbol, 0)
     }
 
@@ -88,8 +94,8 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     /// For example, `label_3` becomes `label_3_break`.
     fn convert_to_break_label(&mut self, label: Identifier) -> Identifier {
         let symbol = label.get_symbol();
-        let s = format!("{}_break", self.interner.lookup(symbol));
-        Identifier::new(self.interner.intern(&s), 0)
+        let s = format!("{}_break", self.sy_interner.lookup(symbol));
+        Identifier::new(self.sy_interner.intern(&s), 0)
     }
 
     /// Converts a label into a corresponding “continue” label.
@@ -97,8 +103,8 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     /// For example, `label_3` becomes `label_3_continue`.
     fn convert_to_continue_label(&mut self, label: Identifier) -> Identifier {
         let symbol = label.get_symbol();
-        let s = format!("{}_continue", self.interner.lookup(symbol));
-        Identifier::new(self.interner.intern(&s), 0)
+        let s = format!("{}_continue", self.sy_interner.lookup(symbol));
+        Identifier::new(self.sy_interner.intern(&s), 0)
     }
 
     /// Translates a parsed program ast::Program into its IR form tacky::Program.
@@ -133,22 +139,30 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     /// other entries in the table are ignored (local variabels and function declarations)
     fn gen_static_variable_defintions(&self, tacky_items: &mut Vec<TopLevel>) {
         for (iden, entry) in self.symbol_table.get_table_ref().iter() {
-            match entry.attributes {
-                IdenAttrs::StaticAttrs {
-                    init_value,
-                    external,
-                } => match init_value {
-                    InitValue::Initial(int) => {
-                        tacky_items.push(TopLevel::S(StaticVariable::new(*iden, external, int)))
+            if let EntryType::Scalar(var_type) = entry.entry_type {
+                match entry.attributes {
+                    IdenAttrs::StaticAttrs {
+                        init_value,
+                        external,
+                    } => {
+                        match init_value {
+                            InitValue::Initial(init) => tacky_items.push(TopLevel::S(
+                                StaticVariable::new(*iden, external, var_type, init),
+                            )),
+                            InitValue::Tentative => {
+                                // for tentative variables, get the correct tentative init according to the type
+                                let init = get_tentative_init(var_type);
+                                tacky_items.push(TopLevel::S(StaticVariable::new(
+                                    *iden, external, var_type, init,
+                                )))
+                            }
+                            // skip unintialized variables
+                            InitValue::NoInitializer => continue,
+                        }
                     }
-                    InitValue::Tentative => {
-                        tacky_items.push(TopLevel::S(StaticVariable::new(*iden, external, 0)))
-                    }
-                    // skip unintialized variables
-                    InitValue::NoInitializer => continue,
-                },
-                // skip local variables and function declarations
-                _ => continue,
+                    // skip local variables and function declarations
+                    _ => continue,
+                }
             }
         }
     }
@@ -157,7 +171,7 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     ///
     /// Returns `None` if the given AST node represents only a function declaration.
     fn gen_function_def(&mut self, function: ast::FunctionDecl) -> Option<tacky::FunctionDef> {
-        let (name, params, body, _, _) = function.into_parts();
+        let (name, _, params, body, _, _) = function.into_parts();
 
         match body {
             Some(block) => {
@@ -207,7 +221,9 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
         }
 
         // Default return for functions without explicit `return` statements
-        instructions.push(tacky::Instruction::Ret(tacky::Value::Constant(0)));
+        instructions.push(tacky::Instruction::Ret(tacky::Value::Constant(
+            Const::ConstInt(0),
+        )));
     }
 
     /// Generates IR for a standard block (without adding implicit returns).
@@ -252,7 +268,7 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
         var_decl: ast::VariableDecl,
         instructions: &mut Vec<tacky::Instruction>,
     ) {
-        let (name, init, storage_class, _) = var_decl.into_parts();
+        let (name, _, init, storage_class, _) = var_decl.into_parts();
 
         // if a variable is declared with static keyword, skip it
         // static variable definitions will be handled separatly

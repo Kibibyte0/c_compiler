@@ -9,6 +9,7 @@ use crate::IRgen;
 use crate::tacky;
 use parser::ast::{self, Expression};
 use shared_context::SpannedIdentifier;
+use shared_context::Type;
 
 mod gen_logical_expressions;
 
@@ -24,40 +25,45 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
         expr: ast::Expression,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
-        let (expr_type, _) = expr.into_parts();
+        let (inner, expr_type, _) = expr.into_parts();
 
-        match expr_type {
+        match inner {
             // Integer literal constant.
-            ast::ExpressionType::Constant(int) => tacky::Value::Constant(int),
+            ast::InnerExpression::Constant(int) => tacky::Value::Constant(int),
 
             // Unary operation: e.g. `-x` or `!x`
-            ast::ExpressionType::Unary { operator, operand } => {
-                self.gen_unary_expr(operator, *operand, instructions)
+            ast::InnerExpression::Unary { operator, operand } => {
+                self.gen_unary_expr(operator, *operand, expr_type, instructions)
             }
 
             // Binary operation: e.g. `x + y`, `x * y`, etc.
-            ast::ExpressionType::Binary {
+            ast::InnerExpression::Binary {
                 operator,
                 operand1,
                 operand2,
-            } => self.gen_binary_expr(operator, *operand1, *operand2, instructions),
+            } => self.gen_binary_expr(operator, *operand1, *operand2, expr_type, instructions),
 
             // Variable reference: returns a value referring to the identifier.
-            ast::ExpressionType::Var(name) => tacky::Value::Var(name.get_identifier()),
+            ast::InnerExpression::Var(name) => tacky::Value::Var(name.get_identifier()),
 
             // Assignment expression: `a = b`
-            ast::ExpressionType::Assignment { lvalue, rvalue } => {
+            ast::InnerExpression::Assignment { lvalue, rvalue } => {
                 self.gen_assignment(*lvalue, *rvalue, instructions)
             }
 
             // Ternary conditional expression: `cond ? cons : alt`
-            ast::ExpressionType::Conditional { cond, cons, alt } => {
-                self.gen_conditional(*cond, *cons, *alt, instructions)
+            ast::InnerExpression::Conditional { cond, cons, alt } => {
+                self.gen_conditional(*cond, *cons, *alt, expr_type, instructions)
             }
 
             // Function call expression: `fun(x, y, ...)`
-            ast::ExpressionType::FunctionCall { name, args } => {
-                self.gen_function_call(name, args, instructions)
+            ast::InnerExpression::FunctionCall { name, args } => {
+                self.gen_function_call(name, args, expr_type, instructions)
+            }
+
+            // Casting expression
+            ast::InnerExpression::Cast { target_type, expr } => {
+                self.gen_cast_expression(*expr, target_type, instructions)
             }
         }
     }
@@ -72,6 +78,7 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
         operator: ast::BinaryOP,
         operand1: ast::Expression,
         operand2: ast::Expression,
+        expr_type: Type,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         use ast::BinaryOP;
@@ -85,7 +92,7 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
             _ => {
                 let src1 = self.gen_expression(operand1, instructions);
                 let src2 = self.gen_expression(operand2, instructions);
-                let dst = self.make_temp_var();
+                let dst = self.make_temp_var(expr_type);
 
                 let tacky_op = IRgen::convert_binary_op(operator);
 
@@ -109,10 +116,11 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
         &mut self,
         operator: ast::UnaryOP,
         operand: ast::Expression,
+        expr_type: Type,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
         let src = self.gen_expression(operand, instructions);
-        let dst = self.make_temp_var();
+        let dst = self.make_temp_var(expr_type);
 
         let tacky_op = IRgen::convert_unary_op(operator);
 
@@ -126,15 +134,6 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     }
 
     /// Generates Tacky instructions for an assignment expression.
-    ///
-    /// ```
-    /// a = b;
-    /// ```
-    /// is lowered into:
-    /// ```
-    ///   rval = <evaluate b>
-    ///   a = rval
-    /// ```
     fn gen_assignment(
         &mut self,
         lvalue: ast::Expression,
@@ -153,28 +152,15 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     }
 
     /// Generates Tacky instructions for a ternary conditional expression:
-    ///
-    /// ```
-    /// cond ? cons : alt
-    /// ```
-    /// becomes:
-    /// ```
-    ///   cond_val = <evaluate cond>
-    ///   jump_if_zero cond_val, else_label
-    ///   tmp = <evaluate cons>
-    ///   jump end_label
-    /// else_label:
-    ///   tmp = <evaluate alt>
-    /// end_label:
-    /// ```
     fn gen_conditional(
         &mut self,
         cond: Expression,
         cons: Expression,
         alt: Expression,
+        expr_type: Type,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
-        let result_var = self.make_temp_var();
+        let result_var = self.make_temp_var(expr_type);
         let e2_label = self.make_label();
         let end_label = self.make_label();
 
@@ -204,24 +190,14 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     }
 
     /// Generates Tacky instructions for a function call.
-    ///
-    /// ```
-    /// result = func(arg1, arg2, ...)
-    /// ```
-    /// is lowered into:
-    /// ```
-    ///   arg_1 = <evaluate arg1>
-    ///   arg_2 = <evaluate arg2>
-    ///   ...
-    ///   call func(arg_1, arg_2, ...), result
-    /// ```
     fn gen_function_call(
         &mut self,
         sp_iden: SpannedIdentifier,
         args: Vec<Box<Expression>>,
+        expr_type: Type,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
-        let result_var = self.make_temp_var();
+        let result_var = self.make_temp_var(expr_type);
 
         // Evaluate all arguments in order and collect their values.
         let mut tacky_args = Vec::new();
@@ -237,6 +213,24 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
         });
 
         result_var
+    }
+
+    /// generate tacky instructions for expression casting
+    fn gen_cast_expression(
+        &mut self,
+        expr: Expression,
+        target_type: Type,
+        instructions: &mut Vec<tacky::Instruction>,
+    ) -> tacky::Value {
+        let result = self.gen_expression(expr, instructions);
+        let dst = self.make_temp_var(target_type);
+        if target_type == Type::Int {
+            instructions.push(tacky::Instruction::Truncate { src: result, dst });
+        } else {
+            instructions.push(tacky::Instruction::SignExtend { src: result, dst });
+        }
+
+        dst
     }
 
     /// Converts an AST-level binary operator into its Tacky equivalent.
@@ -268,7 +262,7 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     /// Converts an AST-level unary operator into its Tacky equivalent.
     fn convert_unary_op(op: ast::UnaryOP) -> tacky::UnaryOP {
         match op {
-            ast::UnaryOP::Not => tacky::UnaryOP::Not,
+            ast::UnaryOP::BitwiseNot => tacky::UnaryOP::Not,
             ast::UnaryOP::Neg => tacky::UnaryOP::Neg,
             ast::UnaryOP::LogicalNot => tacky::UnaryOP::LogicalNot,
         }
