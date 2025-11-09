@@ -8,7 +8,7 @@ It is designed for learning, experimentation, and understanding how high level c
 ## Features
 
 ### ✅ Supported
-- Basic **integer (`int`) type** only
+- Tpyes supported are `long` and `int`
 - Function definitions and calls
 - Control flow:
   - `if` / `else`
