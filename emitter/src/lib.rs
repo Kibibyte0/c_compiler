@@ -1,11 +1,12 @@
 use codegen::asm;
+use shared_context::Identifier;
 use shared_context::symbol_interner::SymbolInterner;
 use shared_context::symbol_table::SymbolTable;
-use shared_context::{Identifier, StaticInit, StaticVariable, Type};
 use std::fs::File;
 use std::io;
 
 mod write_instructions;
+mod write_static_variables;
 
 /// Emitter is responsible for generating assembly code from the codegen
 /// abstract representation
@@ -42,7 +43,7 @@ impl<'a> Emitter<'a> {
                     // Write each function's definition to the output buffer
                     self.write_function_def(fun_def, &mut file)?;
                 }
-                asm::TopLevel::S(var_def) => self.write_static_varibale(var_def, &mut file)?,
+                asm::TopLevel::S(var_def) => self.write_static_variable(var_def, &mut file)?,
             }
         }
 
@@ -66,52 +67,6 @@ impl<'a> Emitter<'a> {
         }
 
         Ok(())
-    }
-
-    /// write variables with static duration into the data section
-    fn write_static_varibale(
-        &self,
-        var_def: StaticVariable,
-        out: &mut impl io::Write,
-    ) -> io::Result<()> {
-        let (name, external, var_type, init) = var_def.into_parts();
-
-        let static_type = if var_type == Type::Int {
-            "long"
-        } else {
-            "quad"
-        };
-
-        let alignment = if var_type == Type::Int { 4 } else { 8 };
-
-        let static_init = match init {
-            StaticInit::IntInit(int) => int as i64,
-            StaticInit::LongInit(long) => long,
-        };
-
-        if external {
-            writeln!(out, "\t.globl {}", self.format_identifier(name))?;
-        }
-
-        // if the initializer is zero, write into the bss seciton
-        if static_init == 0 {
-            writeln!(
-                out,
-                "\t.bss\n\t.align {}\n{}:\n\t.zero {}",
-                alignment,
-                self.format_identifier(name),
-                alignment,
-            )
-        } else {
-            writeln!(
-                out,
-                "\t.data\n\t.align {}\n{}:\n\t.{} {}",
-                alignment,
-                self.format_identifier(name),
-                static_type,
-                static_init,
-            )
-        }
     }
 
     /// Writes a program-level epilogue, e.g., section directives.
