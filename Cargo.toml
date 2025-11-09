@@ -8,7 +8,9 @@ members = ["codegen",
 
 
 [profile.release]
-opt-level = 3       # Optimize for maximum execution speed
-lto = "fat"         # Enable the most aggressive Link Time Optimization
-codegen-units = 1   # Reduce code generation units for better global optimization
-strip = "debuginfo" # Remove debug information from the binary
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"
+panic = "abort"
+overflow-checks = false  # Disable integer overflow checks (use with caution!)
