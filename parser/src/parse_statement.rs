@@ -155,9 +155,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let next_token = self.peek()?.get_token();
         if next_token.is_specifier() {
             let (start, line) = self.peek()?.get_span().get_start_and_line();
-            let (specifier_list, specifier_span) = self.collect_declaration_specifiers()?;
-            let storage_class = self.parse_specifier_list(specifier_list, specifier_span)?;
+            let (var_type, storage_class) = self.parse_type_and_storage_class_list()?;
             Ok(ForInit::D(self.parse_variable_declaration(
+                var_type,
                 storage_class,
                 start,
                 line,

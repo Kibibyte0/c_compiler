@@ -47,10 +47,13 @@ pub enum Token {
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", priority = 0)]
     Identifier,
 
-    /// Integer constants (e.g., `42`, `1000`).
-    #[regex(r"\d+")]
+    /// Integer constatns
+    #[regex(r"[0-9]+", priority = 0)]
     ConstantInt,
 
+    /// Long integer constanst
+    #[regex(r"[0-9]+[lL]", priority = 1)]
+    ConstantLong,
     //
     // Keywords
     //
@@ -58,6 +61,8 @@ pub enum Token {
     Return,
     #[token("int")]
     Int,
+    #[token("long")]
+    Long,
     #[token("void")]
     Void,
     #[token("else")]
@@ -123,7 +128,7 @@ pub enum Token {
 
     // Bitwise operator
     #[token("~")]
-    Not,
+    BitwiseNot,
 
     //
     // Symbols and punctuation
@@ -148,6 +153,10 @@ pub enum Token {
     //
     // Skipped patterns (whitespace, comments, etc.)
     //
+    /// Preprocessor line directive (`# ...`).
+    #[regex(r"# [^\n]*", logos_line_directive)]
+    LineDirective,
+
     /// Newlines increment the line counter.
     #[regex(r"\n", logos_newline)]
 
@@ -157,14 +166,9 @@ pub enum Token {
     #[regex(r"/\*[^*]*\*+([^/*][^*]*\*+)*/", logos::skip)]
     Skip,
 
-    /// Preprocessor line directive (`# ...`).
-    #[regex(r"# [^\n]*", logos_line_directive)]
-    LineDirective,
-
     //
     // Errors
     //
     /// Invalid token pattern (e.g. `123abc`).
-    #[regex(r"\d+[a-zA-Z_][a-zA-Z0-9_]*")]
     Error,
 }

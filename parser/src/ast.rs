@@ -1,9 +1,10 @@
 mod expressions;
 
 use shared_context::Identifier;
-use shared_context::{Span, SpannedIdentifier};
+use shared_context::type_interner::FuncTypeId;
+use shared_context::{Span, SpannedIdentifier, Type};
 
-pub use expressions::{BinaryOP, Expression, ExpressionType, UnaryOP};
+pub use expressions::{BinaryOP, Expression, InnerExpression, UnaryOP};
 
 /// Represents the top-level program node in the AST.
 ///
@@ -54,6 +55,7 @@ pub enum StorageClass {
 /// declarations), and a Span describing its location.
 pub struct FunctionDecl {
     name: SpannedIdentifier,
+    type_id: FuncTypeId,
     params: Vec<SpannedIdentifier>,
     body: Option<Block>,
     storage: StorageClass,
@@ -64,6 +66,7 @@ impl FunctionDecl {
     /// Creates a new FunctionDecl.
     pub fn new(
         name: SpannedIdentifier,
+        type_id: FuncTypeId,
         params: Vec<SpannedIdentifier>,
         body: Option<Block>,
         storage: StorageClass,
@@ -71,6 +74,7 @@ impl FunctionDecl {
     ) -> Self {
         Self {
             name,
+            type_id,
             params,
             body,
             storage,
@@ -97,12 +101,20 @@ impl FunctionDecl {
         self,
     ) -> (
         SpannedIdentifier,
+        FuncTypeId,
         Vec<SpannedIdentifier>,
         Option<Block>,
         StorageClass,
         Span,
     ) {
-        (self.name, self.params, self.body, self.storage, self.span)
+        (
+            self.name,
+            self.type_id,
+            self.params,
+            self.body,
+            self.storage,
+            self.span,
+        )
     }
 }
 
@@ -111,6 +123,7 @@ impl FunctionDecl {
 /// A variable may include an optional initializer expression.
 pub struct VariableDecl {
     name: SpannedIdentifier,
+    var_type: Type,
     init: Option<Expression>,
     storage: StorageClass,
     span: Span,
@@ -120,12 +133,14 @@ impl VariableDecl {
     /// Creates a new [`VariableDecl`].
     pub fn new(
         name: SpannedIdentifier,
+        var_type: Type,
         init: Option<Expression>,
         storage: StorageClass,
         span: Span,
     ) -> Self {
         Self {
             name,
+            var_type,
             init,
             storage,
             span,
@@ -146,8 +161,16 @@ impl VariableDecl {
     }
 
     /// Deconstructs the variable declaration into its components.
-    pub fn into_parts(self) -> (SpannedIdentifier, Option<Expression>, StorageClass, Span) {
-        (self.name, self.init, self.storage, self.span)
+    pub fn into_parts(
+        self,
+    ) -> (
+        SpannedIdentifier,
+        Type,
+        Option<Expression>,
+        StorageClass,
+        Span,
+    ) {
+        (self.name, self.var_type, self.init, self.storage, self.span)
     }
 }
 

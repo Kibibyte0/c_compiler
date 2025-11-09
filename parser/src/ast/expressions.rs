@@ -1,12 +1,15 @@
+use shared_context::{Const, Type};
+
 use crate::ast::{Span, SpannedIdentifier};
 
 /// Represents a single expression node in the AST.
 ///
-/// Each [`Expression`] contains its type variant (`ExpressionType`)
-/// and a [`Span`] indicating its position in the source.
+/// Each Expression contains its type variant (`InnerExpression`)
+/// and a Span indicating its position in the source.
 #[derive(Debug)]
 pub struct Expression {
-    expr: ExpressionType,
+    inner: InnerExpression,
+    expr_type: Type,
     span: Span,
 }
 
@@ -15,9 +18,9 @@ pub struct Expression {
 /// Expressions can represent literals, operations, variable references,
 /// assignments, function calls, and conditional expressions.
 #[derive(Debug)]
-pub enum ExpressionType {
+pub enum InnerExpression {
     /// A constant integer literal, e.g. `42`.
-    Constant(i32),
+    Constant(Const),
 
     /// A unary operation such as negation or logical NOT.
     Unary {
@@ -39,6 +42,12 @@ pub enum ExpressionType {
         alt: Box<Expression>,
     },
 
+    /// a type casting (e.g., `(long) 12 * 6`)
+    Cast {
+        target_type: Type,
+        expr: Box<Expression>,
+    },
+
     /// A variable reference.
     Var(SpannedIdentifier),
 
@@ -56,14 +65,26 @@ pub enum ExpressionType {
 }
 
 impl Expression {
-    /// Creates a new [`Expression`] with the given type and span.
-    pub fn new(expr: ExpressionType, span: Span) -> Self {
-        Self { expr, span }
+    /// Creates a new Expression with the given type and span.
+    pub fn new(inner: InnerExpression, expr_type: Type, span: Span) -> Self {
+        Self {
+            inner,
+            expr_type,
+            span,
+        }
     }
 
-    /// Returns a shared reference to the underlying ExpressionType.
-    pub fn get_expr_type_ref(&self) -> &ExpressionType {
-        &self.expr
+    pub fn set_type(&mut self, new_type: Type) {
+        self.expr_type = new_type
+    }
+
+    pub fn get_type(&self) -> Type {
+        self.expr_type
+    }
+
+    /// Returns a shared reference to the underlying InnerExpression.
+    pub fn get_inner_ref(&self) -> &InnerExpression {
+        &self.inner
     }
 
     pub fn get_span(&self) -> Span {
@@ -71,28 +92,28 @@ impl Expression {
     }
 
     /// Deconstructs the expression into its variant and span.
-    pub fn into_parts(self) -> (ExpressionType, Span) {
-        (self.expr, self.span)
+    pub fn into_parts(self) -> (InnerExpression, Type, Span) {
+        (self.inner, self.expr_type, self.span)
     }
 }
 
 /// Represents all supported unary operators.
 ///
 /// These are operators that operate on a single operand.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnaryOP {
     /// Arithmetic negation (`-x`).
     Neg,
     /// Logical NOT (`!x`).
     LogicalNot,
     /// Bitwise NOT (`~x`).
-    Not,
+    BitwiseNot,
 }
 
 /// Represents all supported binary operators.
 ///
 /// These are operators that combine two operands.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinaryOP {
     // Arithmetic operators
     Add,
@@ -112,4 +133,17 @@ pub enum BinaryOP {
     GreaterThan,
     LessThanOrEq,
     GreaterThanOrEq,
+}
+
+impl BinaryOP {
+    pub fn is_logical(&self) -> bool {
+        matches!(self, Self::LogicalAnd | Self::LogicalOr)
+    }
+
+    pub fn is_arithmetic(&self) -> bool {
+        matches!(
+            self,
+            Self::Add | Self::Sub | Self::Mul | Self::Div | Self::Mod
+        )
+    }
 }

@@ -1,8 +1,8 @@
 use crate::ParseErr;
 use crate::Parser;
-use crate::ast::{BinaryOP, Expression, ExpressionType, UnaryOP};
+use crate::ast::{BinaryOP, Expression, InnerExpression, UnaryOP};
 use lexer::token::Token;
-use shared_context::Span;
+use shared_context::{Span, Type};
 
 mod parse_factor;
 
@@ -51,12 +51,16 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ) -> Result<Expression, ParseErr> {
         self.advance()?; // consume '='
         let right = self.parse_expression(token_precedence)?;
-        let expr_type = ExpressionType::Assignment {
+        let expr_type = InnerExpression::Assignment {
             lvalue: Box::new(left),
             rvalue: Box::new(right),
         };
         let end = self.current_token.get_span().end;
-        Ok(Expression::new(expr_type, Span::new(start, end, line)))
+        Ok(Expression::new(
+            expr_type,
+            Type::default(),
+            Span::new(start, end, line),
+        ))
     }
 
     /// Handles ternary conditional expressions (`cond ? cons : alt`)
@@ -69,13 +73,17 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ) -> Result<Expression, ParseErr> {
         let cons_expr = self.parse_conditional_middle()?;
         let alt_expr = self.parse_expression(token_precedence)?;
-        let expr_type = ExpressionType::Conditional {
+        let expr_type = InnerExpression::Conditional {
             cond: Box::new(left),
             cons: Box::new(cons_expr),
             alt: Box::new(alt_expr),
         };
         let end = self.current_token.get_span().end;
-        Ok(Expression::new(expr_type, Span::new(start, end, line)))
+        Ok(Expression::new(
+            expr_type,
+            Type::default(),
+            Span::new(start, end, line),
+        ))
     }
 
     /// Parses the middle of a ternary expression (between `?` and `:`)
@@ -96,13 +104,17 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ) -> Result<Expression, ParseErr> {
         let op = self.parse_binary_op()?;
         let right = self.parse_expression(token_precedence + 1)?;
-        let expr_type = ExpressionType::Binary {
+        let expr_type = InnerExpression::Binary {
             operator: op,
             operand1: Box::new(left),
             operand2: Box::new(right),
         };
         let end = self.current_token.get_span().end;
-        Ok(Expression::new(expr_type, Span::new(start, end, line)))
+        Ok(Expression::new(
+            expr_type,
+            Type::default(),
+            Span::new(start, end, line),
+        ))
     }
 
     /// Converts the current token into a [`BinaryOP`] or returns an error
@@ -140,7 +152,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         match token.get_token() {
             Token::Neg => Ok(UnaryOP::Neg),
-            Token::Not => Ok(UnaryOP::Not),
+            Token::BitwiseNot => Ok(UnaryOP::BitwiseNot),
             Token::LogicalNot => Ok(UnaryOP::LogicalNot),
             _ => Err(ParseErr::expected(
                 "unary operator",

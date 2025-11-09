@@ -1,7 +1,7 @@
-use crate::ast::{Expression, ExpressionType};
+use crate::ast::{Expression, InnerExpression};
 use crate::{ParseErr, Parser};
 use lexer::token::Token;
-use shared_context::Span;
+use shared_context::{Const, Span, Type};
 
 impl<'a, 'b> Parser<'a, 'b> {
     /// Parses a "factor" in an expression.
@@ -9,13 +9,17 @@ impl<'a, 'b> Parser<'a, 'b> {
     /// - an integer constant
     /// - a unary expression
     /// - a parenthesized expression
+    /// - a type cast
     /// - an identifier (variable or function call)
     pub(crate) fn parse_factor(&mut self) -> Result<Expression, ParseErr> {
         let token = self.peek()?;
 
         match token.get_token() {
-            Token::ConstantInt => self.handle_constant_int(),
+            tok if tok.is_int_contant() => self.handle_constant_int(),
             tok if tok.is_unary() => self.handle_unary_expression(),
+            Token::LeftParenthesis if self.peek_two()?.get_token().is_specifier() => {
+                self.handle_type_cast()
+            }
             Token::LeftParenthesis => self.handle_parenthesized_expression(),
             Token::Identifier => self.handle_identifier_expression(),
             _ => Err(ParseErr::new(
@@ -28,7 +32,10 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     /// Handles parsing of integer constants
     fn handle_constant_int(&mut self) -> Result<Expression, ParseErr> {
-        self.parse_constant_int()
+        match self.peek()?.get_token() {
+            Token::ConstantInt => self.parse_constant_int(),
+            _ => self.parse_constant_long_int(),
+        }
     }
 
     /// Handles parsing of unary expressions, e.g., `-x` or `!flag`
@@ -39,12 +46,12 @@ impl<'a, 'b> Parser<'a, 'b> {
         let inner_exp = self.parse_factor()?;
         let end = self.current_token.get_span().end;
 
-        let expr_type = ExpressionType::Unary {
+        let expr_type = InnerExpression::Unary {
             operator: op,
             operand: Box::new(inner_exp),
         };
         let span = Span::new(start, end, line);
-        Ok(Expression::new(expr_type, span))
+        Ok(Expression::new(expr_type, Type::default(), span))
     }
 
     /// Handles parenthesized expressions: `(expr)`
@@ -53,6 +60,23 @@ impl<'a, 'b> Parser<'a, 'b> {
         let inner_exp = self.parse_expression(0)?;
         self.expect_token(Token::RightParenthesis)?;
         Ok(inner_exp)
+    }
+
+    /// handle type casting: (<type>) <factor>
+    fn handle_type_cast(&mut self) -> Result<Expression, ParseErr> {
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
+
+        self.advance()?; // consume '('
+        let target_type = self.parse_type_list()?;
+        self.expect_token(Token::RightParenthesis)?;
+        let expr_type = InnerExpression::Cast {
+            target_type,
+            expr: Box::new(self.parse_factor()?),
+        };
+
+        let end = self.current_token.get_span().end;
+        let span = Span::new(start, end, line);
+        Ok(Expression::new(expr_type, Type::default(), span))
     }
 
     /// Handles identifiers, which can be variables or function calls
@@ -75,8 +99,8 @@ impl<'a, 'b> Parser<'a, 'b> {
         let end = self.current_token.get_span().end;
         let span = Span::new(start, end, line);
 
-        let expr_type = ExpressionType::FunctionCall { name, args };
-        Ok(Expression::new(expr_type, span))
+        let expr_type = InnerExpression::FunctionCall { name, args };
+        Ok(Expression::new(expr_type, Type::default(), span))
     }
 
     /// Parses the argument list of a function call
@@ -103,33 +127,76 @@ impl<'a, 'b> Parser<'a, 'b> {
         let end = self.current_token.get_span().end;
         let span = Span::new(start, end, line);
 
-        let expr_type = ExpressionType::Var(id);
-        Ok(Expression::new(expr_type, span))
+        let expr_type = InnerExpression::Var(id);
+        Ok(Expression::new(expr_type, Type::default(), span))
     }
 
     /// Parses an integer constant
+    ///
+    /// Turn it into a long integer constant if the value does not fit
     fn parse_constant_int(&mut self) -> Result<Expression, ParseErr> {
         let (start, line) = self.peek()?.get_span().get_start_and_line();
         let token = self.advance()?;
 
-        if token.get_token() == Token::ConstantInt {
-            let value = token.get_lexeme().parse::<i32>().map_err(|_| {
-                ParseErr::new(
-                    "failed to parse integer constant",
-                    token.get_span(),
-                    &self.source_map,
-                )
-            })?;
-            let expr_type = ExpressionType::Constant(value);
-            let end = self.current_token.get_span().end;
-            let span = Span::new(start, end, line);
-            Ok(Expression::new(expr_type, span))
-        } else {
-            Err(ParseErr::expected(
-                "integer constant",
-                &token,
+        // parse the number literal into 128 bit signed integer
+        let value = token.get_lexeme().parse::<i128>().map_err(|_| {
+            ParseErr::new(
+                "failed to parse integer constant",
+                token.get_span(),
                 &self.source_map,
-            ))
+            )
+        })?;
+
+        let end = self.current_token.get_span().end;
+        let span = Span::new(start, end, line);
+
+        // check if the number literal can fit to any of the supported types
+        if let Ok(int) = i32::try_from(value) {
+            let constant = Const::ConstInt(int);
+            let expr_type = InnerExpression::Constant(constant);
+            Ok(Expression::new(expr_type, Type::Int, span))
+        } else if let Ok(long) = i64::try_from(value) {
+            let contant = Const::ConstLong(long);
+            let expr_type = InnerExpression::Constant(contant);
+            Ok(Expression::new(expr_type, Type::Long, span))
+        } else {
+            return Err(ParseErr::new(
+                "integer value too large to represent",
+                token.get_span(),
+                &self.source_map,
+            ));
+        }
+    }
+
+    /// parse a long integer constant (e.g., `123l` or `123L`)
+    fn parse_constant_long_int(&mut self) -> Result<Expression, ParseErr> {
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
+        let token = self.advance()?;
+
+        // remove the suffix
+        let lexeme = &token.get_lexeme()[..token.get_lexeme().len() - 1];
+
+        let value = lexeme.parse::<i128>().map_err(|_| {
+            ParseErr::new(
+                "failed to parse integer constant",
+                token.get_span(),
+                &self.source_map,
+            )
+        })?;
+
+        let end = self.current_token.get_span().end;
+        let span = Span::new(start, end, line);
+
+        if let Ok(long) = i64::try_from(value) {
+            let contant = Const::ConstLong(long);
+            let expr_type = InnerExpression::Constant(contant);
+            Ok(Expression::new(expr_type, Type::Long, span))
+        } else {
+            return Err(ParseErr::new(
+                "integer value too large to represent",
+                token.get_span(),
+                &self.source_map,
+            ));
         }
     }
 }

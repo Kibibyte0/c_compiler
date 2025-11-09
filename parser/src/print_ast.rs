@@ -1,17 +1,23 @@
 use crate::ast::*;
-use shared_context::interner::Interner;
-use shared_context::{Identifier, SpannedIdentifier};
+use shared_context::Type;
+use shared_context::symbol_interner::SymbolInterner;
+use shared_context::type_interner::TypeInterner;
+use shared_context::{Const, Identifier, SpannedIdentifier};
 
 /// DebugTreePrinter traverses the AST and prints a readable, indented
 /// tree representation of program structures (functions, statements, expressions).
 pub struct DebugTreePrinter<'a> {
-    interner: &'a Interner<'a>, // used to resolve identifiers to their string names
+    ty_interner: &'a TypeInterner<'a>, // used to get functions types
+    interner: &'a SymbolInterner<'a>,  // used to resolve identifiers to their string names
 }
 
 impl<'a> DebugTreePrinter<'a> {
     /// Creates a new DebugTreePrinter with a reference to an Interner.
-    pub fn new(interner: &'a Interner) -> Self {
-        Self { interner }
+    pub fn new(ty_interner: &'a TypeInterner<'a>, interner: &'a SymbolInterner) -> Self {
+        Self {
+            ty_interner,
+            interner,
+        }
     }
 
     /// Prints the entire program
@@ -28,21 +34,24 @@ impl<'a> DebugTreePrinter<'a> {
 
     /// Prints a function declaration with its parameters and body
     fn print_function(&self, function: FunctionDecl, level: usize) {
-        let (name, params, body, storage_class, _) = function.into_parts();
+        let (name, type_id, params, body, storage_class, _) = function.into_parts();
+        let fun_type = self.ty_interner.get(type_id);
         println!(
-            "{}FunctionDecl {:?} \"{}\"",
+            "{}{:?} FunctionDecl {:?} \"{}\"",
             self.indent(level),
+            fun_type.ret,
             storage_class,
             self.format_spanned_identifier(name)
         );
 
         // Print function parameters
         println!("{}Params", self.indent(level + 1));
-        for param in params {
+        for (param, param_type) in params.iter().zip(fun_type.params) {
             println!(
-                "{}Param \"{}\"",
+                "{}{:?} \"{}\"",
                 self.indent(level + 2),
-                self.format_spanned_identifier(param)
+                param_type,
+                self.format_spanned_identifier(*param)
             );
         }
 
@@ -81,10 +90,11 @@ impl<'a> DebugTreePrinter<'a> {
 
     /// Prints a variable declaration and its initializer (if present)
     fn print_variable_decl(&self, decl: VariableDecl, level: usize) {
-        let (name, init, storage_class, _) = decl.into_parts();
+        let (name, var_type, init, storage_class, _) = decl.into_parts();
         println!(
-            "{}VariableDecl {:?} \"{}\"",
+            "{}{:?} VariableDecl {:?} \"{}\"",
             self.indent(level),
+            var_type,
             storage_class,
             self.format_spanned_identifier(name)
         );
@@ -262,31 +272,58 @@ impl<'a> DebugTreePrinter<'a> {
 
     /// Prints an expression
     fn print_expression(&self, expr: Expression, level: usize) {
-        let (expr_type, _) = expr.into_parts();
+        let (expr_type, var_type, _) = expr.into_parts();
+        println!("{}{:?}", self.indent(level), var_type);
         match expr_type {
-            ExpressionType::Constant(n) => self.print_constant_expr(n, level),
-            ExpressionType::Unary { operator, operand } => {
+            InnerExpression::Constant(cons) => self.print_constant_expr(cons, level),
+            InnerExpression::Unary { operator, operand } => {
                 self.print_unary_expr(operator, *operand, level)
             }
-            ExpressionType::Binary {
+            InnerExpression::Binary {
                 operator,
                 operand1,
                 operand2,
             } => self.print_binary_expr(operator, *operand1, *operand2, level),
-            ExpressionType::Var(id) => self.print_var_expr(id, level),
-            ExpressionType::Assignment { lvalue, rvalue } => {
+            InnerExpression::Var(id) => self.print_var_expr(id, level),
+            InnerExpression::Assignment { lvalue, rvalue } => {
                 self.print_assignment_expr(*lvalue, *rvalue, level)
             }
-            ExpressionType::Conditional { cond, cons, alt } => {
+            InnerExpression::Conditional { cond, cons, alt } => {
                 self.print_conditional_expr(*cond, *cons, *alt, level)
             }
-            ExpressionType::FunctionCall { name, args } => self.print_call_expr(name, args, level),
+            InnerExpression::FunctionCall { name, args } => self.print_call_expr(name, args, level),
+            InnerExpression::Cast { target_type, expr } => {
+                self.print_type_cast(target_type, *expr, level)
+            }
+        }
+    }
+
+    fn print_type_cast(&self, target_type: Type, expr: Expression, level: usize) {
+        println!(
+            "{}Cast({})",
+            self.indent(level),
+            self.format_type(target_type)
+        );
+        self.print_expression(expr, level + 2);
+    }
+
+    fn format_type(&self, tar_type: Type) -> &'static str {
+        match tar_type {
+            Type::Int => "int",
+            Type::Long => "long",
         }
     }
 
     /// Prints a constant value
-    fn print_constant_expr(&self, value: i32, level: usize) {
-        println!("{}Const {}", self.indent(level), value);
+    fn print_constant_expr(&self, value: Const, level: usize) {
+        match value {
+            Const::ConstInt(int) => {
+                println!("{}ConstInt {}", self.indent(level), int);
+            }
+            Const::ConstLong(long) => {
+                println!("{}ConstLong {}", self.indent(level), long)
+            }
+        }
     }
 
     /// Prints a unary operation
@@ -353,7 +390,11 @@ impl<'a> DebugTreePrinter<'a> {
     /// Formats a simple identifier as "name.id"
     fn format_identifier(&self, identifier: Identifier) -> String {
         let (symbol, id) = identifier.into_parts();
-        format!("{}.{}", self.interner.lookup(symbol), id)
+        if id == 0 {
+            format!("{}", self.interner.lookup(symbol))
+        } else {
+            format!("{}.{}", self.interner.lookup(symbol), id)
+        }
     }
 
     /// Formats a spanned identifier by delegating to format_identifier

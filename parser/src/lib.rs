@@ -1,6 +1,8 @@
 use lexer::{SpannedToken, token::Token};
 use parse_err::ParseErr;
-use shared_context::{Span, interner::Interner, source_map::SourceMap};
+use shared_context::{
+    Span, source_map::SourceMap, symbol_interner::SymbolInterner, type_interner::TypeInterner,
+};
 use std::error::Error;
 
 use crate::ast::*;
@@ -22,10 +24,11 @@ pub mod print_ast;
 /// maps and the string interner.
 pub fn parse<'src, 'ctx>(
     lexer: lexer::Lexer<'src>,
-    interner: &'ctx mut Interner<'src>,
+    ty_interner: &'ctx mut TypeInterner<'src>,
+    interner: &'ctx mut SymbolInterner<'src>,
     source_map: &'ctx SourceMap<'src>,
 ) -> Result<Program, Box<dyn Error>> {
-    let mut parser = Parser::new(lexer, interner, source_map)?;
+    let mut parser = Parser::new(lexer, ty_interner, interner, source_map)?;
     let program = parser.parse_program()?;
     Ok(program)
 }
@@ -38,7 +41,8 @@ pub fn parse<'src, 'ctx>(
 /// The parser builds an abstract syntax tree (AST) for the entire source program.
 pub struct Parser<'src, 'ctx> {
     lexer: lexer::Lexer<'src>,
-    interner: &'ctx mut Interner<'src>,
+    ty_interner: &'ctx mut TypeInterner<'src>,
+    sy_interner: &'ctx mut SymbolInterner<'src>,
     source_map: &'ctx SourceMap<'src>,
 
     /// The most recently consumed token.
@@ -54,12 +58,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Creates a new parser instance from a lexer and compiler context.
     pub fn new(
         lexer: lexer::Lexer<'src>,
-        interner: &'ctx mut Interner<'src>,
+        ty_interner: &'ctx mut TypeInterner<'src>,
+        sy_interner: &'ctx mut SymbolInterner<'src>,
         source_map: &'ctx SourceMap<'src>,
     ) -> Result<Self, ParseErr> {
         Ok(Self {
             lexer,
-            interner,
+            ty_interner,
+            sy_interner,
             source_map,
             current_token: SpannedToken::default(),
             first_peeked_token: None,
@@ -139,7 +145,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Peeks three tokens ahead without consuming any.
     ///
     /// currently peek three is no longer in use due to a change in the parser
-    /// but it's left here in case if it's needed in the future
+    /// but it's left here in case it's needed in the future
     /// if it is of no use after finishing the parser, it will be discarded
     fn _peek_three(&mut self) -> Result<SpannedToken<'src>, ParseErr> {
         // Ensure first and second peeked tokens exist
@@ -189,10 +195,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     /// Parses a block of statements and/or declarations:
-    ///
-    /// ```text
-    /// { <block-item>* }
-    /// ```
     fn parse_block(&mut self) -> Result<Block, ParseErr> {
         let (start, line) = self.peek()?.get_span().get_start_and_line();
 

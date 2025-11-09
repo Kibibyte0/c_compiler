@@ -3,23 +3,25 @@ use crate::ast::{Block, Declaration, FunctionDecl, StorageClass, VariableDecl};
 use crate::parse_err::ParseErr;
 use lexer::SpannedToken;
 use lexer::token::Token;
+use shared_context::Type;
 use shared_context::{Identifier, Span, SpannedIdentifier};
 
 impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Parses a declaration, determining whether it is a function or variable declaration.
     pub(crate) fn parse_declaration(&mut self) -> Result<Declaration, ParseErr> {
         let (start, line) = self.peek()?.get_span().get_start_and_line();
-        let (specifier_list, specifier_span) = self.collect_declaration_specifiers()?;
-        let storage_class = self.parse_specifier_list(specifier_list, specifier_span)?;
+        let (decl_type, storage_class) = self.parse_type_and_storage_class_list()?;
 
         let token = self.peek_two()?.get_token();
         match token {
             Token::LeftParenthesis => Ok(Declaration::FunDecl(self.parse_function_decl(
+                decl_type,
                 storage_class,
                 start,
                 line,
             )?)),
             _ => Ok(Declaration::VarDecl(self.parse_variable_declaration(
+                decl_type,
                 storage_class,
                 start,
                 line,
@@ -28,24 +30,24 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     /// parse a specifier list to determine the type and storage class of a declaration
-    ///
-    /// currently it returns storage class only because int is the only valid type
-    pub(crate) fn parse_specifier_list(
+    pub(crate) fn parse_type_and_storage_class_list(
         &mut self,
-        list: Vec<SpannedToken>,
-        span: Span,
-    ) -> Result<StorageClass, ParseErr> {
+    ) -> Result<(Type, StorageClass), ParseErr> {
+        let (list, span) = self.collect_declaration_specifiers()?;
         let mut type_list = Vec::new();
         let mut storage_class_list = Vec::new();
 
         for specifier in list {
-            match specifier.get_token() {
-                Token::Int => type_list.push(specifier),
-                _ => storage_class_list.push(specifier),
+            if specifier.get_token().is_type() {
+                type_list.push(specifier);
+            } else {
+                storage_class_list.push(specifier);
             }
         }
 
-        if type_list.len() != 1 || storage_class_list.len() > 1 {
+        let decl_type = self.parse_type(type_list, span)?;
+
+        if storage_class_list.len() > 1 {
             return Err(ParseErr::new(
                 "Invalid declaration specifier",
                 span,
@@ -58,13 +60,13 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             None => StorageClass::None,
         };
 
-        Ok(storage_class)
+        Ok((decl_type, storage_class))
     }
 
     /// collect all the tokens that make up a declaration specifier into one vector,
     /// return the vector and span of the list of specifiers,
     /// this list will be used to parse the types and storage class of the declaration
-    pub(crate) fn collect_declaration_specifiers(
+    fn collect_declaration_specifiers(
         &mut self,
     ) -> Result<(Vec<SpannedToken<'src>>, Span), ParseErr> {
         let (start, line) = self.peek()?.get_span().get_start_and_line();
@@ -81,6 +83,43 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         Ok((specifier_list, span))
     }
 
+    /// parse a specifier list that doesn't contain storage class specifiers
+    ///
+    /// return an err if a storage class specifier is found
+    pub(crate) fn parse_type_list(&mut self) -> Result<Type, ParseErr> {
+        let (list, span) = self.collect_declaration_specifiers()?;
+        let mut type_list = Vec::new();
+
+        for specifier in list {
+            if specifier.get_token().is_type() {
+                type_list.push(specifier);
+            } else {
+                return Err(ParseErr::new(
+                    "Invalid use of storage class specifier",
+                    span,
+                    &self.source_map,
+                ));
+            }
+        }
+
+        self.parse_type(type_list, span)
+    }
+
+    /// parse types annotations in a specifier list
+    fn parse_type(&mut self, token_list: Vec<SpannedToken>, span: Span) -> Result<Type, ParseErr> {
+        let type_list: Vec<&str> = token_list.iter().map(|st| st.get_lexeme()).collect();
+        match type_list.as_slice() {
+            ["int"] => Ok(Type::Int),
+            ["int", "long"] | ["long", "int"] | ["long"] => Ok(Type::Long),
+            _ => Err(ParseErr::new(
+                "invalid type specifier",
+                span,
+                &self.source_map,
+            )),
+        }
+    }
+
+    /// parse storage and linkage specifiers
     fn parse_storage_class(&self, token: SpannedToken) -> Result<StorageClass, ParseErr> {
         match token.get_token() {
             Token::Static => Ok(StorageClass::Static),
@@ -94,12 +133,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     /// Parses a variable declaration:
-    ///
-    /// ```text
-    /// { <specifier> }+ <identifier> [= <expr>] ;
-    /// ```
     pub(crate) fn parse_variable_declaration(
         &mut self,
+        var_type: Type,
         storage_class: StorageClass,
         start: usize,
         line: usize,
@@ -117,16 +153,13 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         let end = self.current_token.get_span().end;
         let span = Span::new(start, end, line);
-        Ok(VariableDecl::new(name, init, storage_class, span))
+        Ok(VariableDecl::new(name, var_type, init, storage_class, span))
     }
 
     /// Parses a function declaration:
-    ///
-    /// ```text
-    /// int <identifier> ( <param-list> ) <block-or-semicolon>
-    /// ```
     fn parse_function_decl(
         &mut self,
+        ret_type: Type,
         storage_class: StorageClass,
         start: usize,
         line: usize,
@@ -134,15 +167,23 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let name = self.parse_identifier()?;
 
         self.expect_token(Token::LeftParenthesis)?;
-        let params = self.parse_params_list()?;
+        let (params_types, params_iden) = self.parse_params_list()?;
         self.expect_token(Token::RightParenthesis)?;
 
         let body = self.parse_optional_block()?;
 
         let end = self.current_token.get_span().end;
         let span = Span::new(start, end, line);
+        let type_id = self.ty_interner.intern(ret_type, &params_types);
 
-        Ok(FunctionDecl::new(name, params, body, storage_class, span))
+        Ok(FunctionDecl::new(
+            name,
+            type_id,
+            params_iden,
+            body,
+            storage_class,
+            span,
+        ))
     }
 
     /// Parses an optional function body block.
@@ -164,22 +205,30 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Accepts either:
     /// - `void` (no parameters), or
     /// - one or more `int <identifier>` pairs separated by commas.
-    fn parse_params_list(&mut self) -> Result<Vec<SpannedIdentifier>, ParseErr> {
-        let mut params = Vec::new();
+    ///
+    /// Returns two vectors
+    /// - vector of params identifiers
+    /// - vector for params types
+    fn parse_params_list(&mut self) -> Result<(Vec<Type>, Vec<SpannedIdentifier>), ParseErr> {
+        let mut params_iden = Vec::new();
+        let mut params_type = Vec::new();
+
         if self.peek()?.get_token() == Token::Void {
             self.advance()?; // consume 'void'
-            return Ok(params);
+            return Ok((params_type, params_iden));
         }
 
-        self.expect_token(Token::Int)?;
-        params.push(self.parse_identifier()?);
+        let param_type = self.parse_type_list()?;
+        params_iden.push(self.parse_identifier()?);
+        params_type.push(param_type);
 
         while self.peek()?.get_token() != Token::RightParenthesis {
             self.expect_token(Token::Comma)?;
-            self.expect_token(Token::Int)?;
-            params.push(self.parse_identifier()?);
+            let param_type = self.parse_type_list()?;
+            params_iden.push(self.parse_identifier()?);
+            params_type.push(param_type);
         }
-        Ok(params)
+        Ok((params_type, params_iden))
     }
 
     /// Parses an identifier and returns it as a SpannedToken.
@@ -193,7 +242,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let span = Span::new(start, end, line);
 
         if token.get_token() == Token::Identifier {
-            let identifier = Identifier::new(self.interner.intern(token.get_lexeme()), 0);
+            let identifier = Identifier::new(self.sy_interner.intern(token.get_lexeme()), 0);
             Ok(SpannedIdentifier::new(identifier, span))
         } else {
             Err(ParseErr::expected("identifier", &token, &self.source_map))
