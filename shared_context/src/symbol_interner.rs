@@ -1,21 +1,21 @@
 use bumpalo::Bump;
 use std::collections::HashMap;
 
-/// A `Symbol` represents a unique identifier for a string in the interner.
+/// A `Symbol` represents a unique identifier for a string in the SymbolInterner.
 /// Internally, it's just an index into a vector of strings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Symbol(pub(crate) usize);
 
-/// `Interner` stores unique strings and assigns each a `Symbol`.
+/// `SymbolInterner` stores unique strings and assigns each a `Symbol`.
 /// It uses a bump allocator (`Bump`) for fast memory allocation of strings.
-pub struct Interner<'a> {
+pub struct SymbolInterner<'a> {
     arena: &'a Bump,               // Memory arena for allocating strings
     map: HashMap<&'a str, Symbol>, // Map from string slice to its symbol
     vec: Vec<&'a str>,             // Vector to look up a string by its Symbol
 }
 
-impl<'a> Interner<'a> {
-    /// Creates a new `Interner` with a reference to a bump arena.
+impl<'a> SymbolInterner<'a> {
+    /// Creates a new `SymbolInterner` with a reference to a bump arena.
     /// The first position in the vector is reserved for a default string.
     pub fn new(arena: &'a Bump) -> Self {
         let mut vec = Vec::new();
