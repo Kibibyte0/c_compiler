@@ -1,11 +1,88 @@
-use crate::{Identifier, Span, StaticInit, Type, type_interner::FuncTypeId};
+use crate::{Identifier, Span, StaticInit, Type, type_interner::TypeID};
 use std::collections::HashMap;
+
+pub struct SymbolTable {
+    table: HashMap<Identifier, SymbolEntry>, // Internal hashmap for fast lookups
+}
+
+impl SymbolTable {
+    /// Creates a new, empty symbol table.
+    pub fn new() -> Self {
+        Self {
+            table: HashMap::new(),
+        }
+    }
+
+    /// Retrieves a `SymbolEntry` for a given identifier if it exists.
+    /// Returns `None` if the identifier is not found.
+    pub fn lookup(&self, key: Identifier) -> Option<&SymbolEntry> {
+        self.table.get(&key)
+    }
+
+    /// Retrieve a `SymbolEntry` for a give identifier, this function is unsafe
+    /// because if panics if the identifier doen't exist
+    pub fn unsafe_lookup(&self, key: Identifier) -> &SymbolEntry {
+        self.table.get(&key).unwrap()
+    }
+
+    /// Adds a new identifier to the symbol table.
+    pub fn add(
+        &mut self,
+        iden: Identifier,
+        entry_type: EntryType,
+        attributes: IdenAttrs,
+        span: Span,
+    ) {
+        self.table.insert(
+            iden,
+            SymbolEntry {
+                attributes,
+                entry_type,
+                span,
+            },
+        );
+    }
+
+    /// get a reference to the hash map in symbol table
+    pub fn get_table(self) -> HashMap<Identifier, SymbolEntry> {
+        self.table
+    }
+
+    pub fn get_table_ref(&self) -> &HashMap<Identifier, SymbolEntry> {
+        &self.table
+    }
+}
+
+/// A `SymbolEntry` represents an entry in the symbol table.
+/// It stores information about an identifier.
+#[derive(Debug, PartialEq)]
+pub struct SymbolEntry {
+    pub entry_type: EntryType, // Type of the identifier (variable or function)
+    pub attributes: IdenAttrs, // hold metadata about the identifier
+    pub span: Span,            // Source code span where the identifier was declared
+}
+
+impl SymbolEntry {
+    pub fn is_function(&self) -> bool {
+        match self.entry_type {
+            EntryType::Func(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_static(&self) -> bool {
+        match self.attributes {
+            IdenAttrs::StaticAttrs { .. } => true,
+            _ => false,
+        }
+    }
+}
 
 /// represent the type of an entry in a symbol table
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
     Scalar(Type),
-    Func(FuncTypeId),
+    Func(TypeID),
 }
 
 // the identifier attributes type hold metadata about the identifier
@@ -79,72 +156,5 @@ impl InitValue {
             InitValue::Initial(_) => true,
             _ => false,
         }
-    }
-}
-
-/// A `SymbolEntry` represents an entry in the symbol table.
-/// It stores information about an identifier.
-#[derive(Debug, PartialEq)]
-pub struct SymbolEntry {
-    pub entry_type: EntryType, // Type of the identifier (variable or function)
-    pub attributes: IdenAttrs, // hold metadata about the identifier
-    pub span: Span,            // Source code span where the identifier was declared
-}
-
-impl SymbolEntry {
-    pub fn is_function(&self) -> bool {
-        match self.entry_type {
-            EntryType::Func(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_static(&self) -> bool {
-        match self.attributes {
-            IdenAttrs::StaticAttrs { .. } => true,
-            _ => false,
-        }
-    }
-}
-
-pub struct SymbolTable {
-    table: HashMap<Identifier, SymbolEntry>, // Internal hashmap for fast lookups
-}
-
-impl SymbolTable {
-    /// Creates a new, empty symbol table.
-    pub fn new() -> Self {
-        Self {
-            table: HashMap::new(),
-        }
-    }
-
-    /// Retrieves a `SymbolEntry` for a given identifier if it exists.
-    /// Returns `None` if the identifier is not found.
-    pub fn get(&self, key: Identifier) -> Option<&SymbolEntry> {
-        self.table.get(&key)
-    }
-
-    /// Adds a new identifier to the symbol table.
-    pub fn add(
-        &mut self,
-        iden: Identifier,
-        entry_type: EntryType,
-        attributes: IdenAttrs,
-        span: Span,
-    ) {
-        self.table.insert(
-            iden,
-            SymbolEntry {
-                attributes,
-                entry_type,
-                span,
-            },
-        );
-    }
-
-    /// get a reference to the hash map in symbol table
-    pub fn get_table_ref(&self) -> &HashMap<Identifier, SymbolEntry> {
-        &self.table
     }
 }

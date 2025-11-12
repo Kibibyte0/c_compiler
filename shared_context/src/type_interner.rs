@@ -9,19 +9,9 @@ use std::collections::HashMap;
 /// can be done by comparing these IDs directly, without
 /// comparing parameter lists or return types.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct FuncTypeId(u32);
+pub struct TypeID(u32);
 
-/// Represents a canonicalized function type.
-///
-/// Each `FunctionType` stores:
-/// - a return type (`ret`)
-/// - a slice of parameter types (`params`)
-///
-/// The parameter list is a reference to data allocated in a
-/// `bumpalo::Bump` arena, ensuring immutability and stable memory.
-///
-/// Once interned, `FunctionType` values are never modified or dropped
-/// individually — they live for the entire lifetime of the arena.
+/// Represents a function type.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct FunctionType<'a> {
     /// The return type of the function.
@@ -36,20 +26,11 @@ pub struct FunctionType<'a> {
 /// single canonical representation in memory. For now, it only handles
 /// function types, but it can be extended later to intern other type
 /// forms such as structs, enums, pointers, and arrays.
-///
-/// The interner uses:
-/// - A `HashMap` for deduplication (mapping from type → ID)
-/// - A `Vec` for ID-to-type lookup
-/// - A shared bump arena for fast, stable allocation
-///
-/// # Lifetimes
-/// `'a` refers to the lifetime of the bump arena.
-/// All interned types must live as long as the arena itself.
 pub struct TypeInterner<'a> {
     /// The bump allocator used for storing immutable type data.
     arena: &'a Bump,
     /// Maps canonicalized `FunctionType`s to their assigned IDs.
-    map: HashMap<FunctionType<'a>, FuncTypeId>,
+    map: HashMap<FunctionType<'a>, TypeID>,
     /// Stores all interned types; the index corresponds to the ID.
     types: Vec<&'a FunctionType<'a>>,
 }
@@ -69,7 +50,7 @@ impl<'a> TypeInterner<'a> {
     /// If an identical function type already exists, its existing ID
     /// is returned instead of creating a duplicate. Otherwise, the
     /// type and its parameter list are allocated in the bump arena.
-    pub fn intern(&mut self, ret: Type, params: &[Type]) -> FuncTypeId {
+    pub fn intern(&mut self, ret: Type, params: &[Type]) -> TypeID {
         // Temporary key for deduplication
         let key = FunctionType { ret, params };
 
@@ -88,7 +69,7 @@ impl<'a> TypeInterner<'a> {
         });
 
         // Assign the next available ID
-        let id = FuncTypeId(self.types.len() as u32);
+        let id = TypeID(self.types.len() as u32);
 
         // Record the new type in the map and vector
         self.map.insert(
@@ -107,7 +88,7 @@ impl<'a> TypeInterner<'a> {
     ///
     /// # Panics
     /// Panics if the given ID does not correspond to a valid interned type.
-    pub fn get(&self, id: FuncTypeId) -> &'a FunctionType<'a> {
+    pub fn get(&self, id: TypeID) -> &'a FunctionType<'a> {
         self.types[id.0 as usize]
     }
 }

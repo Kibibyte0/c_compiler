@@ -1,46 +1,30 @@
 // Crate-level imports and re-exports
-use crate::source_map::SourceMap;
 use crate::symbol_interner::SymbolInterner;
-use crate::symbol_table::SymbolTable;
 use crate::type_interner::TypeInterner;
 pub use bumpalo::Bump; // Memory arena used for efficient allocation
 use symbol_interner::Symbol;
 
+pub use symbol_registry::SymbolRegistery;
+pub use symbol_table::SymbolTable;
+
 // Submodules
-pub mod asm_symbol_table; // stores symbols, and metadate needed during codegen
 pub mod source_map; // Maps AST positions to source code positions
 pub mod symbol_interner; // Deduplicates strings and creates Symbols
-pub mod symbol_table; // Stores symbols, types, and their metadata
+pub mod symbol_registry; // Stores symbols types, and their metadata after type checking for infallible access
+pub mod symbol_table; // Stores symbols, types, and their metadata while typechecking
 pub mod type_interner; // Deduplicate function types
 
-/// Global compiler context
-/// Holds the state shared across all compiler stages
-/// This includes the interner, symbol table, and source map
-pub struct CompilerContext<'a> {
-    pub ty_interner: TypeInterner<'a>,   // For interning complex types
-    pub sy_interner: SymbolInterner<'a>, // For interning strings into Symbols
-    pub source_map: SourceMap<'a>,       // Maps AST nodes to source positions
-    pub symbol_table: SymbolTable,       // Tracks variable/function declarations
+/// Used to deduplicate identifiers and complex types, stores them in an arena
+pub struct Interner<'arena> {
+    pub sy: SymbolInterner<'arena>,
+    pub ty: TypeInterner<'arena>,
 }
 
-impl<'a> CompilerContext<'a> {
-    /// Creates a new compiler context
-    ///
-    /// # Arguments
-    /// - `arena`: Memory arena for allocations
-    /// - `file_name`: Name of the source file
-    /// - `source_code`: The source code itself
-    pub fn new(arena: &'a Bump, file_name: &'a str, source_code: &'a str) -> Self {
-        let ty_interner = TypeInterner::new(arena);
-        let sy_interner = SymbolInterner::new(arena);
-        let source_map = SourceMap::new(file_name, source_code);
-        let symbol_table = SymbolTable::new();
-
+impl<'arena> Interner<'arena> {
+    pub fn new(arena: &'arena Bump) -> Self {
         Self {
-            ty_interner,
-            sy_interner,
-            source_map,
-            symbol_table,
+            sy: SymbolInterner::new(arena),
+            ty: TypeInterner::new(arena),
         }
     }
 }
@@ -170,6 +154,21 @@ impl StaticVariable {
 pub enum Type {
     Int,
     Long,
+    Uint,
+    Ulong,
+}
+
+impl Type {
+    pub fn size(&self) -> usize {
+        match self {
+            Type::Long | Type::Ulong => 8,
+            Type::Int | Type::Uint => 4,
+        }
+    }
+
+    pub fn is_signed(&self) -> bool {
+        matches!(self, Type::Int | Type::Long)
+    }
 }
 
 impl Default for Type {
@@ -183,6 +182,8 @@ impl Default for Type {
 pub enum Const {
     ConstInt(i32),
     ConstLong(i64),
+    ConstUint(u32),
+    ConstUlong(u64),
 }
 
 // holds the type of initlizer a static variable can have.
@@ -190,6 +191,8 @@ pub enum Const {
 pub enum StaticInit {
     IntInit(i32),
     LongInit(i64),
+    UintInit(u32),
+    UlongInit(u64),
 }
 
 /// Represents an operand size in assembly
@@ -201,28 +204,26 @@ pub enum OperandSize {
 
 pub fn convert_type_to_operand_size(t: Type) -> OperandSize {
     match t {
-        Type::Int => OperandSize::LongWord,
-        Type::Long => OperandSize::QuadWord,
+        Type::Int | Type::Uint => OperandSize::LongWord,
+        Type::Long | Type::Ulong => OperandSize::QuadWord,
     }
 }
 
 /// convert a const into StaticInit according to the variable type
 pub fn convert_constant_value_to_static_init(cons_val: Const, var_type: Type) -> StaticInit {
-    match cons_val {
-        Const::ConstInt(int) => {
-            if var_type == Type::Int {
-                StaticInit::IntInit(int)
-            } else {
-                StaticInit::LongInit(int as i64)
-            }
-        }
-        Const::ConstLong(long) => {
-            if var_type == Type::Long {
-                StaticInit::LongInit(long)
-            } else {
-                StaticInit::IntInit(long as i32)
-            }
-        }
+    // Normalize constant value to a u64 or i64 depending on signedness
+    let (unsigned_value, signed_value) = match cons_val {
+        Const::ConstInt(v) => (v as u64, v as i64),
+        Const::ConstLong(v) => (v as u64, v),
+        Const::ConstUint(v) => (v as u64, v as i64),
+        Const::ConstUlong(v) => (v, v as i64),
+    };
+
+    match var_type {
+        Type::Int => StaticInit::IntInit(signed_value as i32),
+        Type::Long => StaticInit::LongInit(signed_value as i64),
+        Type::Uint => StaticInit::UintInit(unsigned_value as u32),
+        Type::Ulong => StaticInit::UlongInit(unsigned_value as u64),
     }
 }
 
@@ -231,5 +232,7 @@ pub fn get_tentative_init(var_type: Type) -> StaticInit {
     match var_type {
         Type::Int => StaticInit::IntInit(0),
         Type::Long => StaticInit::LongInit(0),
+        Type::Uint => StaticInit::UintInit(0),
+        Type::Ulong => StaticInit::UlongInit(0),
     }
 }
