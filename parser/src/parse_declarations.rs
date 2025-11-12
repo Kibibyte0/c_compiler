@@ -5,6 +5,7 @@ use lexer::SpannedToken;
 use lexer::token::Token;
 use shared_context::Type;
 use shared_context::{Identifier, Span, SpannedIdentifier};
+use std::collections::HashSet;
 
 impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Parses a declaration, determining whether it is a function or variable declaration.
@@ -108,15 +109,41 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// parse types annotations in a specifier list
     fn parse_type(&mut self, token_list: Vec<SpannedToken>, span: Span) -> Result<Type, ParseErr> {
         let type_list: Vec<&str> = token_list.iter().map(|st| st.get_lexeme()).collect();
-        match type_list.as_slice() {
-            ["int"] => Ok(Type::Int),
-            ["int", "long"] | ["long", "int"] | ["long"] => Ok(Type::Long),
-            _ => Err(ParseErr::new(
+
+        if token_list.is_empty()
+            || Self::has_duplicates(&type_list)
+            || Self::contains_all(&type_list, &["signed", "unsigned"])
+        {
+            Err(ParseErr::new(
                 "invalid type specifier",
                 span,
                 &self.source_map,
-            )),
+            ))
+        } else if Self::contains_all(&type_list, &["unsigned", "long"]) {
+            Ok(Type::Ulong)
+        } else if type_list.contains(&"unsigned") {
+            Ok(Type::Uint)
+        } else if type_list.contains(&"long") {
+            Ok(Type::Long)
+        } else {
+            Ok(Type::Int)
         }
+    }
+
+    /// check if a vector have duplicate elements
+    fn has_duplicates<T: Eq + std::hash::Hash>(vec: &[T]) -> bool {
+        let mut seen = HashSet::new();
+        for item in vec {
+            if !seen.insert(item) {
+                return true; // duplicate found
+            }
+        }
+        false
+    }
+
+    /// check if needles is a subset of haystack
+    fn contains_all<T: PartialEq>(haystack: &[T], needles: &[T]) -> bool {
+        needles.iter().all(|n| haystack.contains(n))
     }
 
     /// parse storage and linkage specifiers

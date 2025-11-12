@@ -3,8 +3,11 @@ use std::fmt;
 
 impl Token {
     /// Returns `true` if the this token represents an integer literal (e.g., `1`, `12l`)
-    pub fn is_int_contant(&self) -> bool {
-        matches!(self, Token::ConstantInt | Token::ConstantLong)
+    pub fn is_int_constant(&self) -> bool {
+        matches!(
+            self,
+            Token::ConstantInt | Token::ConstantLong | Token::ConstantUint | Token::ConstantUlong
+        )
     }
     /// Returns `true` if this token represents a unary operator.
     pub fn is_unary(&self) -> bool {
@@ -40,13 +43,21 @@ impl Token {
     pub fn is_specifier(&self) -> bool {
         matches!(
             self,
-            Token::Int | Token::Long | Token::Static | Token::Extern
+            Token::Int
+                | Token::Long
+                | Token::Static
+                | Token::Extern
+                | Token::Unsigned
+                | Token::Signed
         )
     }
 
     /// Returns `true` if this token repressent a type
     pub fn is_type(&self) -> bool {
-        matches!(self, Token::Int | Token::Long)
+        matches!(
+            self,
+            Token::Int | Token::Long | Token::Unsigned | Token::Signed
+        )
     }
 
     /// Returns the operator precedence value (higher = binds more tightly).
@@ -77,11 +88,15 @@ impl fmt::Display for Token {
             Token::Identifier => write!(f, "identifier"),
             Token::ConstantInt => write!(f, "int constant"),
             Token::ConstantLong => write!(f, "long int contant"),
+            Token::ConstantUint => write!(f, "unsigned int contant"),
+            Token::ConstantUlong => write!(f, "unsigned long int constant"),
 
             // Keywords
             Token::Return => write!(f, "return"),
             Token::Int => write!(f, "int"),
             Token::Long => write!(f, "long"),
+            Token::Signed => write!(f, "signed"),
+            Token::Unsigned => write!(f, "unsigned"),
             Token::Void => write!(f, "void"),
             Token::Else => write!(f, "else"),
             Token::If => write!(f, "if"),

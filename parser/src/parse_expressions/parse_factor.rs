@@ -15,7 +15,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         let token = self.peek()?;
 
         match token.get_token() {
-            tok if tok.is_int_contant() => self.handle_constant_int(),
+            tok if tok.is_int_constant() => self.handle_constant_int(),
             tok if tok.is_unary() => self.handle_unary_expression(),
             Token::LeftParenthesis if self.peek_two()?.get_token().is_specifier() => {
                 self.handle_type_cast()
@@ -34,7 +34,10 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn handle_constant_int(&mut self) -> Result<Expression, ParseErr> {
         match self.peek()?.get_token() {
             Token::ConstantInt => self.parse_constant_int(),
-            _ => self.parse_constant_long_int(),
+            Token::ConstantLong => self.parse_constant_long(),
+            Token::ConstantUint => self.parse_constant_uint(),
+            Token::ConstantUlong => self.parse_constant_ulong(),
+            _ => self.parse_constant_int(),
         }
     }
 
@@ -169,7 +172,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     /// parse a long integer constant (e.g., `123l` or `123L`)
-    fn parse_constant_long_int(&mut self) -> Result<Expression, ParseErr> {
+    fn parse_constant_long(&mut self) -> Result<Expression, ParseErr> {
         let (start, line) = self.peek()?.get_span().get_start_and_line();
         let token = self.advance()?;
 
@@ -191,6 +194,78 @@ impl<'a, 'b> Parser<'a, 'b> {
             let contant = Const::ConstLong(long);
             let expr_type = InnerExpression::Constant(contant);
             Ok(Expression::new(expr_type, Type::Long, span))
+        } else {
+            return Err(ParseErr::new(
+                "integer value too large to represent",
+                token.get_span(),
+                &self.source_map,
+            ));
+        }
+    }
+
+    /// Parses an unsigned integer constant
+    ///
+    /// Turn it into an unsignd long integer constant if the value does not fit
+    fn parse_constant_uint(&mut self) -> Result<Expression, ParseErr> {
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
+        let token = self.advance()?;
+
+        // remove the suffix
+        let lexeme = &token.get_lexeme()[..token.get_lexeme().len() - 1];
+
+        // parse the number literal into 128 bit unsigned integer
+        let value = lexeme.parse::<u128>().map_err(|_| {
+            ParseErr::new(
+                "failed to parse integer constant",
+                token.get_span(),
+                &self.source_map,
+            )
+        })?;
+
+        let end = self.current_token.get_span().end;
+        let span = Span::new(start, end, line);
+
+        // check if the number literal can fit to any of the supported types
+        if let Ok(uint) = u32::try_from(value) {
+            let constant = Const::ConstUint(uint);
+            let expr_type = InnerExpression::Constant(constant);
+            Ok(Expression::new(expr_type, Type::Uint, span))
+        } else if let Ok(ulong) = u64::try_from(value) {
+            let contant = Const::ConstUlong(ulong);
+            let expr_type = InnerExpression::Constant(contant);
+            Ok(Expression::new(expr_type, Type::Ulong, span))
+        } else {
+            return Err(ParseErr::new(
+                "integer value too large to represent",
+                token.get_span(),
+                &self.source_map,
+            ));
+        }
+    }
+
+    /// parse an unsigned long integer constant (e.g., `123lU` or `123uL`)
+    fn parse_constant_ulong(&mut self) -> Result<Expression, ParseErr> {
+        let (start, line) = self.peek()?.get_span().get_start_and_line();
+        let token = self.advance()?;
+
+        // remove the suffix
+        let lexeme = &token.get_lexeme()[..token.get_lexeme().len() - 2];
+
+        let value = lexeme.parse::<u128>().map_err(|_| {
+            ParseErr::new(
+                "failed to parse integer constant",
+                token.get_span(),
+                &self.source_map,
+            )
+        })?;
+
+        let end = self.current_token.get_span().end;
+        let span = Span::new(start, end, line);
+
+        if let Ok(ulong) = u64::try_from(value) {
+            let contant = Const::ConstUlong(ulong);
+            let expr_type = InnerExpression::Constant(contant);
+            Ok(Expression::new(expr_type, Type::Ulong, span))
         } else {
             return Err(ParseErr::new(
                 "integer value too large to represent",

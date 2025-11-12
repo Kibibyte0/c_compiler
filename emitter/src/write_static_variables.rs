@@ -39,10 +39,13 @@ impl<'a> Emitter<'a> {
     }
 
     /// Converts `StaticInit` enum to an i64 for emission
-    fn static_init_value(&self, init: StaticInit) -> i64 {
+    /// to which type we convert static init does not matter, as they have the same bit representation
+    fn static_init_value(&self, init: StaticInit) -> u64 {
         match init {
-            StaticInit::IntInit(i) => i as i64,
-            StaticInit::LongInit(l) => l,
+            StaticInit::IntInit(i) => i as u64,
+            StaticInit::LongInit(l) => l as u64,
+            StaticInit::UintInit(ui) => ui as u64,
+            StaticInit::UlongInit(ul) => ul,
         }
     }
 
@@ -69,7 +72,7 @@ impl<'a> Emitter<'a> {
         name: Identifier,
         asm_type: &str,
         alignment: usize,
-        value: i64,
+        value: u64,
     ) -> io::Result<()> {
         writeln!(
             out,

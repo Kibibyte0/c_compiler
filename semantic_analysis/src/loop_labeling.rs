@@ -1,18 +1,18 @@
-use crate::{
-    LoopLabeling,
-    semantic_error::{ErrorType, SemanticErr},
-};
+use crate::semantic_error::{ErrorType, SemanticErr};
 use parser::ast::*;
 use shared_context::{Identifier, Span, source_map::SourceMap, symbol_interner::SymbolInterner};
+
+/// Second pass: labels each loop to support `break` and `continue`
+/// Ensures break/continue are used only inside loops
+pub(crate) struct LoopLabeling<'src, 'ctx> {
+    sy_interner: &'ctx mut SymbolInterner<'src>,
+    source_map: &'ctx SourceMap<'src>,
+    label_counter: usize, // Counter for unique loop labels
+}
 
 impl<'src, 'ctx> LoopLabeling<'src, 'ctx> {
     /// Creates a new loop labeling pass.
     ///
-    /// # Parameters
-    /// - `compiler_ctx`: Shared compiler context containing the source map, interner and symbol table.
-    /// - `label_counter`: The initial counter for generating unique loop labels.
-    ///
-    /// # Purpose
     /// This pass traverses the AST and:
     /// 1. Assigns unique labels to each loop construct (`while`, `do-while`, `for`).
     /// 2. Ensures that `break` and `continue` statements appear only inside loops.

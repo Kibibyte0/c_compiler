@@ -2,7 +2,7 @@ use crate::{TypeChecker, semantic_error::ErrorType};
 use parser::ast::*;
 use shared_context::{
     Identifier, Span, SpannedIdentifier, symbol_table::EntryType, symbol_table::IdenAttrs,
-    type_interner::FuncTypeId,
+    type_interner::TypeID,
 };
 
 impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
@@ -18,7 +18,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         &mut self,
         function: FunctionDecl,
     ) -> Result<FunctionDecl, ErrorType> {
-        let (sp_iden, type_id, params, body, storage_class, span) = function.into_parts();
+        let (sp_iden, ty_id, params, body, storage_class, span) = function.into_parts();
 
         let has_body = body.is_some();
         // check if the function is external or internal
@@ -26,7 +26,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         let mut defined = false;
 
         // if there exist a previous entry, update external and defined to match that of the previous entry
-        match self.check_previous_function_decl(sp_iden, type_id, storage_class, span, has_body)? {
+        match self.check_previous_function_decl(sp_iden, ty_id, storage_class, span, has_body)? {
             Some((prev_external, prev_defined)) => {
                 external = prev_external;
                 defined = prev_defined;
@@ -37,7 +37,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         // Register the function in the symbol table.
         self.register_function(
             sp_iden.get_identifier(),
-            type_id,
+            ty_id,
             span,
             external,
             defined || has_body,
@@ -45,11 +45,11 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
 
         if let Some(block) = body {
             // Function parameters are treated as variables within the function scope.
-            self.register_function_params(&params, type_id, span);
-            let typechecked_body = Some(self.typecheck_block(block, type_id)?);
+            self.register_function_params(&params, ty_id, span);
+            let typechecked_body = Some(self.typecheck_block(block, ty_id)?);
             Ok(FunctionDecl::new(
                 sp_iden,
-                type_id,
+                ty_id,
                 params,
                 typechecked_body,
                 storage_class,
@@ -59,7 +59,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
             // Declaration without a body is allowed.
             Ok(FunctionDecl::new(
                 sp_iden,
-                type_id,
+                ty_id,
                 params,
                 body,
                 storage_class,
@@ -79,15 +79,15 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     fn check_previous_function_decl(
         &self,
         sp_iden: SpannedIdentifier,
-        type_id: FuncTypeId,
+        ty_id: TypeID,
         storage_class: StorageClass,
         span: Span,
         has_body: bool,
     ) -> Result<Option<(bool, bool)>, ErrorType> {
         // if there is a previous declaration with the same identifier
-        if let Some(prev_entry) = self.symbol_table.get(sp_iden.get_identifier()) {
+        if let Some(prev_entry) = self.symbol_table.lookup(sp_iden.get_identifier()) {
             // chick if they have the same type
-            if EntryType::Func(type_id) != prev_entry.entry_type {
+            if EntryType::Func(ty_id) != prev_entry.entry_type {
                 return Err(ErrorType::IncompatibleDecl {
                     first: prev_entry.span,
                     second: span,
@@ -123,24 +123,24 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     fn register_function(
         &mut self,
         iden: Identifier,
-        type_id: FuncTypeId,
+        ty_id: TypeID,
         span: Span,
         external: bool,
         defined: bool,
     ) {
         let attrs = IdenAttrs::FunAttrs { defined, external };
         self.symbol_table
-            .add(iden, EntryType::Func(type_id), attrs, span);
+            .add(iden, EntryType::Func(ty_id), attrs, span);
     }
 
     /// Registers the parameters of a function as local variables.
     fn register_function_params(
         &mut self,
         params: &Vec<SpannedIdentifier>,
-        type_id: FuncTypeId,
+        ty_id: TypeID,
         span: Span,
     ) {
-        let params_types = self.ty_interner.get(type_id).params;
+        let params_types = self.ty_interner.get(ty_id).params;
         for (sp_iden, param_type) in params.iter().zip(params_types) {
             self.symbol_table.add(
                 sp_iden.get_identifier(),

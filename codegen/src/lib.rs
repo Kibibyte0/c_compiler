@@ -1,10 +1,9 @@
+use asm_gen::AsmGen;
 use ir_gen::tacky;
-use shared_context::{
-    asm_symbol_table::AsmSymbolTable, symbol_interner::SymbolInterner, symbol_table::SymbolTable,
-    type_interner::TypeInterner,
-};
-
 use reg_alloc::RegisterAllocation;
+use shared_context::{
+    SymbolRegistery, symbol_interner::SymbolInterner, type_interner::TypeInterner,
+};
 
 // These modules implement different parts of the code generation pipeline.
 // Each focuses on a specific transformation step in the backend.
@@ -22,13 +21,6 @@ mod reg_alloc;
 //   2. Allocate hardware registers for pseudo-registers.
 //   3. Fix or rewrite invalid instructions that violate constraints.
 
-// Responsible for generating assembly from Tacky IR.
-struct AsmGen<'ctx, 'src> {
-    ty_interner: &'ctx TypeInterner<'src>, // getting the type of each function
-    symbol_table: &'ctx SymbolTable,
-    args_registers: Vec<asm::Register>, // predefined list of argument registers (ABI-dependent)
-}
-
 // Empty struct used as a namespace for instruction fix-up methods.
 struct InstructionFix;
 
@@ -42,15 +34,14 @@ pub struct DebuggingPrinter<'a> {
 // Takes a Tacky IR program and returns a final assembly program.
 pub fn codegen<'ctx, 'src>(
     program_tacky: tacky::Program,
-    asm_symbol_table: &'ctx AsmSymbolTable,
     ty_interner: &'ctx TypeInterner<'src>,
-    symbol_table: &'ctx SymbolTable,
+    symbol_reg: &'ctx SymbolRegistery,
 ) -> asm::Program {
     // 1. Convert Tacky IR into an assembly AST (still uses pseudo-registers).
-    let mut program_asm = AsmGen::new(ty_interner, symbol_table).gen_asm(program_tacky);
+    let mut program_asm = AsmGen::new(ty_interner, symbol_reg).gen_asm(program_tacky);
 
     // 2. Allocate real machine registers or stack slots to pseudo-registers.
-    let mut codegen = RegisterAllocation::new(asm_symbol_table);
+    let mut codegen = RegisterAllocation::new(symbol_reg);
     codegen.allocate_registers(&mut program_asm);
 
     // 3. Fix invalid or non-encodable instructions.

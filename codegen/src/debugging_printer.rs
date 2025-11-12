@@ -72,6 +72,9 @@ impl<'a> DebuggingPrinter<'a> {
             asm::Instruction::Movsx { src, dst } => {
                 println!("{}Movsx(src: {:?}, dst: {:?})", indent, src, dst)
             }
+            asm::Instruction::Movzx { src, dst } => {
+                println!("{}Movzx(src: {:?}, dst: {:?})", indent, src, dst)
+            }
             asm::Instruction::Unary { size, op, dst } => {
                 println!(
                     "{}Unary(size: {:?}, op: {:?}, dst: {:?})",
@@ -92,6 +95,9 @@ impl<'a> DebuggingPrinter<'a> {
             }
             asm::Instruction::Idiv(size, src) => {
                 println!("{}Idiv(size: {:?}, src: {:?})", indent, size, src);
+            }
+            asm::Instruction::Div(size, src) => {
+                println!("{}Div(size: {:?}, src: {:?})", indent, size, src);
             }
             asm::Instruction::Cdq(size) => {
                 println!("{}Cdq(size: {:?})", indent, size);

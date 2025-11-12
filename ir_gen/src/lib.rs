@@ -200,8 +200,7 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     fn get_function_linkage(&self, iden: Identifier) -> bool {
         // every defined function is gaurnteed to be in the symbol table at this point.
         self.symbol_table
-            .get(iden)
-            .unwrap()
+            .unsafe_lookup(iden)
             .attributes
             .is_external()
     }

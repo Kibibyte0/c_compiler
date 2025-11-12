@@ -6,7 +6,15 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     /// uses C conversion rules to get the common type between two types
     /// the common type is the type that an expression having type1 and type2 as operands should have
     fn get_common_type(type1: Type, type2: Type) -> Type {
-        if type1 == type2 { type1 } else { Type::Long }
+        if type1 == type2 {
+            type1
+        } else if type1.size() == type2.size() {
+            if type1.is_signed() { type2 } else { type1 }
+        } else if type1.size() > type2.size() {
+            type1
+        } else {
+            type2
+        }
     }
 
     /// convert an Expression by wrapping it in a cast
@@ -174,7 +182,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         span: Span,
     ) -> Result<Expression, ErrorType> {
         // after the identifier resolution pass, it's guaranteed that all variables expressions are in the symbol table.
-        let entry = self.symbol_table.get(sp_ident.get_identifier()).unwrap();
+        let entry = self.symbol_table.unsafe_lookup(sp_ident.get_identifier());
 
         if let EntryType::Scalar(var_type) = entry.entry_type {
             let inner = InnerExpression::Var(sp_ident);
@@ -211,7 +219,8 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         args: Vec<Box<Expression>>,
         span: Span,
     ) -> Result<Expression, ErrorType> {
-        let entry = self.symbol_table.get(sp_iden.get_identifier()).unwrap();
+        // at this point in semantic analysis, it's guaranteed that the identifier is in the symbol table
+        let entry = self.symbol_table.unsafe_lookup(sp_iden.get_identifier());
 
         // Ensure the identifier refers to a function
         if let EntryType::Func(type_id) = entry.entry_type {

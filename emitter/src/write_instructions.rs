@@ -22,7 +22,8 @@ impl<'a> Emitter<'a> {
             asm::Instruction::Binary { size, op, src, dst } => {
                 self.write_binary_instruction(size, op, src, dst, out)
             }
-            asm::Instruction::Idiv(size, src) => self.write_div_instruction(size, src, out),
+            asm::Instruction::Idiv(size, src) => self.write_idiv_instruction(size, src, out),
+            asm::Instruction::Div(size, src) => self.write_div_instruction(size, src, out),
             asm::Instruction::Cdq(size) => self.write_cdq_instruction(size, out),
             asm::Instruction::Cmp { size, src, dst } => {
                 self.write_cmp_instruction(size, src, dst, out)
@@ -33,6 +34,7 @@ impl<'a> Emitter<'a> {
             asm::Instruction::Label(label) => self.write_label(label, out),
             asm::Instruction::Call(name) => self.wrtie_call_instruction(name, out),
             asm::Instruction::Push(src) => self.write_push_instruction(src, out),
+            asm::Instruction::Movzx { .. } => Ok(()), // this instruction will be replaced before reaching code emission
         }
     }
 
@@ -94,7 +96,7 @@ impl<'a> Emitter<'a> {
         self.format_two_operand_instruction(&opcode, &src, &dst, out)
     }
 
-    fn write_div_instruction(
+    fn write_idiv_instruction(
         &self,
         size: OperandSize,
         src: asm::Operand,
@@ -103,6 +105,19 @@ impl<'a> Emitter<'a> {
         let reg_size = Self::convert_operand_size_to_reg_size(size);
         let suffix = Self::convert_operand_size_to_suffix(size);
         let opcode = format!("idiv{}", suffix);
+        let src = self.convert_operand(src, reg_size);
+        self.format_one_operand_instruction(&opcode, &src, out)
+    }
+
+    fn write_div_instruction(
+        &self,
+        size: OperandSize,
+        src: asm::Operand,
+        out: &mut impl io::Write,
+    ) -> io::Result<()> {
+        let reg_size = Self::convert_operand_size_to_reg_size(size);
+        let suffix = Self::convert_operand_size_to_suffix(size);
+        let opcode = format!("div{}", suffix);
         let src = self.convert_operand(src, reg_size);
         self.format_one_operand_instruction(&opcode, &src, out)
     }
@@ -169,7 +184,7 @@ impl<'a> Emitter<'a> {
 
     fn wrtie_call_instruction(&self, name: Identifier, out: &mut impl io::Write) -> io::Result<()> {
         let mut fun_name = self.format_identifier(name);
-        if !self.symbol_table.get(name).unwrap().attributes.is_defined() {
+        if !self.symbol_reg.get_function(&name).is_def() {
             fun_name.push_str("@PLT");
         }
         self.format_one_operand_instruction("call", &fun_name, out)

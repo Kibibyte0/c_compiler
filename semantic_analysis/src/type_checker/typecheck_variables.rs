@@ -87,7 +87,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         let mut external = storage_class != StorageClass::Static;
         let mut init_value = self.check_declaration_init(init, storage_class, var_type)?;
 
-        if let Some(prev_decl) = self.symbol_table.get(name.get_identifier()) {
+        if let Some(prev_decl) = self.symbol_table.lookup(name.get_identifier()) {
             // 1. Ensure the previous declaration is compatible (type, kind, etc.)
             self.ensure_compatible_declaration(&prev_decl, span, var_type)?;
 
@@ -236,7 +236,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
         }
 
         // Check for previous declaration
-        if let Some(prev_decl) = self.symbol_table.get(name.get_identifier()) {
+        if let Some(prev_decl) = self.symbol_table.lookup(name.get_identifier()) {
             if prev_decl.entry_type != EntryType::Scalar(var_type) {
                 return Err(ErrorType::IncompatibleDecl {
                     first: prev_decl.span,

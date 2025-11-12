@@ -1,13 +1,13 @@
 use crate::{TypeChecker, semantic_error::ErrorType};
 use parser::ast::*;
-use shared_context::{Identifier, type_interner::FuncTypeId};
+use shared_context::{Identifier, type_interner::TypeID};
 
 impl<'src, 'c> TypeChecker<'src, 'c> {
     /// Type check a statement.
     pub(crate) fn typecheck_statement(
         &mut self,
         stmt: Statement,
-        curr_fun: FuncTypeId,
+        curr_fun: TypeID,
     ) -> Result<Statement, ErrorType> {
         let (stmt_type, span) = stmt.into_parts();
 
@@ -49,7 +49,7 @@ impl<'src, 'c> TypeChecker<'src, 'c> {
     fn typecheck_return_statement(
         &mut self,
         expr: Expression,
-        curr_fun: FuncTypeId,
+        curr_fun: TypeID,
     ) -> Result<StatementType, ErrorType> {
         // convert the expression to the type of the enclosing function return type.
         let ret_type = self.ty_interner.get(curr_fun).ret;
@@ -70,7 +70,7 @@ impl<'src, 'c> TypeChecker<'src, 'c> {
         condition: Expression,
         if_clause: Statement,
         else_clause: Option<Box<Statement>>,
-        curr_fun: FuncTypeId,
+        curr_fun: TypeID,
     ) -> Result<StatementType, ErrorType> {
         let checked_cond = self.typecheck_expression(condition)?;
         let checked_if = Box::new(self.typecheck_statement(if_clause, curr_fun)?);
@@ -92,7 +92,7 @@ impl<'src, 'c> TypeChecker<'src, 'c> {
         condition: Expression,
         body: Statement,
         label: Identifier,
-        curr_fun: FuncTypeId,
+        curr_fun: TypeID,
     ) -> Result<StatementType, ErrorType> {
         let checked_cond = self.typecheck_expression(condition)?;
         let checked_body = Box::new(self.typecheck_statement(body, curr_fun)?);
@@ -109,7 +109,7 @@ impl<'src, 'c> TypeChecker<'src, 'c> {
         condition: Expression,
         body: Statement,
         label: Identifier,
-        curr_fun: FuncTypeId,
+        curr_fun: TypeID,
     ) -> Result<StatementType, ErrorType> {
         let checked_cond = self.typecheck_expression(condition)?;
         let checked_body = Box::new(self.typecheck_statement(body, curr_fun)?);
@@ -128,7 +128,7 @@ impl<'src, 'c> TypeChecker<'src, 'c> {
         post: Option<Expression>,
         body: Statement,
         label: Identifier,
-        curr_fun: FuncTypeId,
+        curr_fun: TypeID,
     ) -> Result<StatementType, ErrorType> {
         let checked_init = self.typecheck_for_init(init)?;
         let checked_condition = match condition {
@@ -167,7 +167,7 @@ impl<'src, 'c> TypeChecker<'src, 'c> {
     fn typecheck_compound_statement(
         &mut self,
         block: Block,
-        curr_fun: FuncTypeId,
+        curr_fun: TypeID,
     ) -> Result<StatementType, ErrorType> {
         let checked_block = self.typecheck_block(block, curr_fun)?;
         Ok(StatementType::Compound(checked_block))

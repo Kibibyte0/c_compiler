@@ -50,10 +50,12 @@ pub enum Token {
     /// Integer constatns
     #[regex(r"[0-9]+", priority = 0)]
     ConstantInt,
-
-    /// Long integer constanst
     #[regex(r"[0-9]+[lL]", priority = 1)]
     ConstantLong,
+    #[regex(r"[0-9]+[uU]")]
+    ConstantUint,
+    #[regex(r"[0-9]+([lL][uU]|[uU][lL])")]
+    ConstantUlong,
     //
     // Keywords
     //
@@ -63,6 +65,10 @@ pub enum Token {
     Int,
     #[token("long")]
     Long,
+    #[token("unsigned")]
+    Unsigned,
+    #[token("signed")]
+    Signed,
     #[token("void")]
     Void,
     #[token("else")]

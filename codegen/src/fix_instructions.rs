@@ -58,7 +58,9 @@ impl InstructionFix {
             },
             Push(src) => Self::fix_push(src, new_instructions),
             Movsx { src, dst } => Self::fix_movsx(src, dst, new_instructions),
-            Idiv(size, src) => Self::fix_div(size, src, new_instructions),
+            Movzx { src, dst } => Self::fix_movzx(src, dst, new_instructions),
+            Idiv(size, src) => Self::fix_idiv(size, src, new_instructions),
+            Div(size, src) => Self::fix_div(size, src, new_instructions),
             // other instructions do not need fixing
             _ => false,
         }
@@ -80,6 +82,39 @@ impl InstructionFix {
         }
 
         needs_fix
+    }
+
+    /// Replace Movzx instruction by one or two Mov instruction
+    fn fix_movzx(
+        src: asm::Operand,
+        dst: asm::Operand,
+        new_instructions: &mut Vec<asm::Instruction>,
+    ) -> bool {
+        use Instruction::Mov;
+        use OperandSize::{LongWord, QuadWord};
+        use Register::R11;
+
+        if Self::is_register(dst) {
+            new_instructions.push(Mov {
+                size: LongWord,
+                src,
+                dst,
+            });
+        } else {
+            new_instructions.push(Mov {
+                size: LongWord,
+                src,
+                dst: Reg(R11),
+            });
+            new_instructions.push(Mov {
+                size: QuadWord,
+                src: Reg(R11),
+                dst,
+            });
+        }
+
+        // this instruction is always replaced
+        true
     }
 
     /// Fix Movsx instruction when either the source is immediate, the destination is Stack, or both
@@ -217,7 +252,7 @@ impl InstructionFix {
     /// Fix IDIV instructions when the divisor is an immediate value.
     /// Since IDIV cannot take an immediate operand, the immediate is first moved
     /// into the temporary register R10, which is then used as the divisor.
-    fn fix_div(
+    fn fix_idiv(
         size: OperandSize,
         src: asm::Operand,
         new_instructions: &mut Vec<asm::Instruction>,
@@ -232,6 +267,29 @@ impl InstructionFix {
 
         if needs_fix {
             new_instructions.push(Idiv(size, fixed_src));
+        }
+
+        needs_fix
+    }
+
+    /// Fix DIV instructions when the divisor is an immediate value.
+    /// Since DIV cannot take an immediate operand, the immediate is first moved
+    /// into the temporary register R10, which is then used as the divisor.
+    fn fix_div(
+        size: OperandSize,
+        src: asm::Operand,
+        new_instructions: &mut Vec<asm::Instruction>,
+    ) -> bool {
+        use asm::Instruction::Div;
+        use asm::Register::R10;
+
+        let needs_fix = Self::is_immediate(src);
+
+        let fixed_src =
+            Self::mov_operand(src, R10, size, needs_fix, new_instructions).unwrap_or(src);
+
+        if needs_fix {
+            new_instructions.push(Div(size, fixed_src));
         }
 
         needs_fix
@@ -307,10 +365,14 @@ impl InstructionFix {
         matches!(op, asm::Operand::Immediate(_))
     }
 
+    fn is_register(op: asm::Operand) -> bool {
+        matches!(op, asm::Operand::Reg(_))
+    }
+
     /// check if an Operand is an immediate that can't fit into 4 bytes
     fn is_large_immediate(op: asm::Operand) -> bool {
         if let asm::Operand::Immediate(int) = op {
-            if int > i32::MAX as i64 { true } else { false }
+            if int > i32::MAX as u64 { true } else { false }
         } else {
             false
         }

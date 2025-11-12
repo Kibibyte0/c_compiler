@@ -1,7 +1,7 @@
 mod expressions;
 
 use shared_context::Identifier;
-use shared_context::type_interner::FuncTypeId;
+use shared_context::type_interner::TypeID;
 use shared_context::{Span, SpannedIdentifier, Type};
 
 pub use expressions::{BinaryOP, Expression, InnerExpression, UnaryOP};
@@ -55,7 +55,7 @@ pub enum StorageClass {
 /// declarations), and a Span describing its location.
 pub struct FunctionDecl {
     name: SpannedIdentifier,
-    type_id: FuncTypeId,
+    type_id: TypeID,
     params: Vec<SpannedIdentifier>,
     body: Option<Block>,
     storage: StorageClass,
@@ -66,7 +66,7 @@ impl FunctionDecl {
     /// Creates a new FunctionDecl.
     pub fn new(
         name: SpannedIdentifier,
-        type_id: FuncTypeId,
+        type_id: TypeID,
         params: Vec<SpannedIdentifier>,
         body: Option<Block>,
         storage: StorageClass,
@@ -101,7 +101,7 @@ impl FunctionDecl {
         self,
     ) -> (
         SpannedIdentifier,
-        FuncTypeId,
+        TypeID,
         Vec<SpannedIdentifier>,
         Option<Block>,
         StorageClass,

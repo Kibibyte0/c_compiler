@@ -218,18 +218,26 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     /// generate tacky instructions for expression casting
     fn gen_cast_expression(
         &mut self,
-        expr: Expression,
+        inner: Expression,
         target_type: Type,
         instructions: &mut Vec<tacky::Instruction>,
     ) -> tacky::Value {
-        let result = self.gen_expression(expr, instructions);
-        let dst = self.make_temp_var(target_type);
-        if target_type == Type::Int {
-            instructions.push(tacky::Instruction::Truncate { src: result, dst });
-        } else {
-            instructions.push(tacky::Instruction::SignExtend { src: result, dst });
-        }
+        let inner_ty = inner.get_type();
+        let inner_ty_size = inner_ty.size();
+        let target_ty_size = target_type.size();
 
+        let result = self.gen_expression(inner, instructions);
+        let dst = self.make_temp_var(target_type);
+
+        if target_ty_size == inner_ty_size {
+            instructions.push(tacky::Instruction::Copy { src: result, dst });
+        } else if target_ty_size < inner_ty_size {
+            instructions.push(tacky::Instruction::Truncate { src: result, dst });
+        } else if inner_ty.is_signed() {
+            instructions.push(tacky::Instruction::SignExtend { src: result, dst });
+        } else {
+            instructions.push(tacky::Instruction::ZeroExtend { src: result, dst });
+        }
         dst
     }
 

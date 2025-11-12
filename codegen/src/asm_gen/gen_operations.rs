@@ -91,13 +91,26 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
         asm_instructions: &mut Vec<asm::Instruction>,
     ) {
         let size = self.get_val_size(src1);
+        let operand_ty = self.get_val_type(src1);
+
         asm_instructions.push(asm::Instruction::Mov {
             size,
             src: Self::convert_val(src1),
             dst: Reg(Register::AX),
         });
-        asm_instructions.push(asm::Instruction::Cdq(size)); // Sign-extend AX to DX:AX
-        asm_instructions.push(asm::Instruction::Idiv(size, Self::convert_val(src2)));
+
+        // if the operand is unsigned, use div, otherwise use idiv
+        if operand_ty.is_signed() {
+            asm_instructions.push(asm::Instruction::Cdq(size)); // Sign-extend AX to DX:AX
+            asm_instructions.push(asm::Instruction::Idiv(size, Self::convert_val(src2)));
+        } else {
+            asm_instructions.push(asm::Instruction::Mov {
+                size,
+                src: asm::Operand::Immediate(0),
+                dst: Reg(Register::DX),
+            });
+            asm_instructions.push(asm::Instruction::Div(size, Self::convert_val(src2)));
+        }
 
         let ret_reg = match op {
             tacky::BinaryOP::Mod => Reg(Register::DX),
@@ -145,6 +158,8 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
         asm_instructions: &mut Vec<asm::Instruction>,
     ) {
         let size = self.get_val_size(src1);
+        let operand_ty = self.get_val_type(src1);
+
         asm_instructions.push(asm::Instruction::Cmp {
             size,
             src: Self::convert_val(src2),
@@ -156,7 +171,7 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
             dst: Self::convert_val(dst),
         });
         asm_instructions.push(asm::Instruction::SetCC(
-            Self::convert_comparison_op(op),
+            Self::convert_comparison_op(op, operand_ty.is_signed()),
             Self::convert_val(dst),
         ));
     }
@@ -172,14 +187,21 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
     }
 
     /// Convert Tacky comparison operator to ASM condition code.
-    fn convert_comparison_op(op: tacky::BinaryOP) -> asm::Cond {
-        match op {
-            tacky::BinaryOP::GreaterThan => asm::Cond::G,
-            tacky::BinaryOP::GreaterThanOrEq => asm::Cond::GE,
-            tacky::BinaryOP::LessThan => asm::Cond::L,
-            tacky::BinaryOP::LessThanOrEq => asm::Cond::LE,
-            tacky::BinaryOP::Equal => asm::Cond::E,
-            tacky::BinaryOP::NotEqual => asm::Cond::NE,
+    fn convert_comparison_op(op: tacky::BinaryOP, is_signed: bool) -> asm::Cond {
+        match (op, is_signed) {
+            // signed comparison
+            (tacky::BinaryOP::GreaterThan, true) => asm::Cond::G,
+            (tacky::BinaryOP::GreaterThanOrEq, true) => asm::Cond::GE,
+            (tacky::BinaryOP::LessThan, true) => asm::Cond::L,
+            (tacky::BinaryOP::LessThanOrEq, true) => asm::Cond::LE,
+            // unsigned comparison
+            (tacky::BinaryOP::GreaterThan, false) => asm::Cond::A,
+            (tacky::BinaryOP::GreaterThanOrEq, false) => asm::Cond::AE,
+            (tacky::BinaryOP::LessThan, false) => asm::Cond::B,
+            (tacky::BinaryOP::LessThanOrEq, false) => asm::Cond::BE,
+            // signe independent comparison
+            (tacky::BinaryOP::Equal, _) => asm::Cond::E,
+            (tacky::BinaryOP::NotEqual, _) => asm::Cond::NE,
             _ => asm::Cond::E, // unreachable
         }
     }

@@ -96,20 +96,6 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     }
 
     /// Lowers an `if-else` statement into IR.
-    ///
-    /// ```
-    /// if (cond) if_clause else else_clause
-    /// ```
-    /// becomes:
-    /// ```
-    ///   cond_val = <expr>
-    ///   jump_if_zero cond_val, else_label
-    ///   <if_clause>
-    ///   jump end_label
-    /// else_label:
-    ///   <else_clause>
-    /// end_label:
-    /// ```
     fn gen_if_statement_with_else_clause(
         &mut self,
         condition: Expression,
@@ -132,17 +118,6 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     }
 
     /// Lowers an `if` statement without an `else` clause.
-    ///
-    /// ```
-    /// if (cond) body
-    /// ```
-    /// becomes:
-    /// ```
-    ///   cond_val = <expr>
-    ///   jump_if_zero cond_val, end_label
-    ///   <body>
-    /// end_label:
-    /// ```
     fn gen_if_statement_without_else_clause(
         &mut self,
         condition: Expression,
@@ -178,19 +153,6 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     }
 
     /// Lowers a `do-while` loop.
-    ///
-    /// ```
-    /// do { body } while (cond);
-    /// ```
-    /// becomes:
-    /// ```
-    /// start_label:
-    ///   <body>
-    /// continue_label:
-    ///   cond_val = <expr>
-    ///   jump_if_not_zero cond_val, start_label
-    /// break_label:
-    /// ```
     fn gen_do_while_statement(
         &mut self,
         condition: Expression,
@@ -213,19 +175,6 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     }
 
     /// Lowers a `while` loop.
-    ///
-    /// ```
-    /// while (cond) { body }
-    /// ```
-    /// becomes:
-    /// ```
-    /// continue_label:
-    ///   cond_val = <expr>
-    ///   jump_if_zero cond_val, break_label
-    ///   <body>
-    ///   jump continue_label
-    /// break_label:
-    /// ```
     fn gen_while_statement(
         &mut self,
         condition: Expression,
@@ -246,22 +195,6 @@ impl<'src, 'ctx> IRgen<'src, 'ctx> {
     }
 
     /// Lowers a `for` loop.
-    ///
-    /// ```
-    /// for (init; cond; post) { body }
-    /// ```
-    /// becomes:
-    /// ```
-    ///   <init>
-    /// start_label:
-    ///   <cond>?
-    ///   jump_if_zero cond_val, break_label
-    ///   <body>
-    /// continue_label:
-    ///   <post>
-    ///   jump start_label
-    /// break_label:
-    /// ```
     fn gen_for_statement(
         &mut self,
         init: ForInit,

@@ -1,4 +1,3 @@
-use crate::IdentifierResolver;
 use crate::semantic_error::{ErrorType, SemanticErr};
 use parser::ast::*;
 use shared_context::{SpannedIdentifier, source_map::SourceMap, symbol_interner::Symbol};
@@ -7,6 +6,13 @@ use std::collections::{HashMap, VecDeque};
 mod resolve_declaration;
 mod resolve_expressions;
 mod resolve_statements;
+
+/// First pass: resolves variable and function identifiers
+/// Builds the symbol table and detects duplicate declarations
+pub(crate) struct IdentifierResolver<'src, 'ctx> {
+    source_map: &'ctx SourceMap<'src>,
+    variable_counter: usize, // Counter for auto-generated variables
+}
 
 /// Represents an entry in the identifier resolver.
 /// Keeps track of the identifier's source info and whether it has linkage (global/static).

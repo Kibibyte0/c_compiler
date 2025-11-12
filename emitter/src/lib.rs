@@ -1,7 +1,6 @@
 use codegen::asm;
-use shared_context::Identifier;
 use shared_context::symbol_interner::SymbolInterner;
-use shared_context::symbol_table::SymbolTable;
+use shared_context::{Identifier, SymbolRegistery};
 use std::fs::File;
 use std::io;
 
@@ -13,17 +12,16 @@ mod write_static_variables;
 pub struct Emitter<'a> {
     /// Reference to the interner, used to resolve symbols to strings.
     interner: &'a SymbolInterner<'a>,
-    /// Reference to the symbol table, which stores variable/function symbols.
-    symbol_table: &'a SymbolTable,
+    symbol_reg: &'a SymbolRegistery,
 }
 
 impl<'a> Emitter<'a> {
     /// Constructs a new `Emitter` with the given configuration.
-    pub fn new(interner: &'a SymbolInterner<'a>, symbol_table: &'a SymbolTable) -> Self {
+    pub fn new(interner: &'a SymbolInterner<'a>, symbol_reg: &'a SymbolRegistery) -> Self {
         // Each indentation level corresponds to 4 spaces
         Self {
             interner,
-            symbol_table,
+            symbol_reg,
         }
     }
 

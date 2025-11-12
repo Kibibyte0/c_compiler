@@ -1,7 +1,6 @@
 use shared_context::Identifier;
 use shared_context::OperandSize;
-use shared_context::asm_symbol_table::AsmSymbolEntry;
-use shared_context::asm_symbol_table::AsmSymbolTable;
+use shared_context::SymbolRegistery;
 
 use crate::asm;
 use std::collections::HashMap;
@@ -9,28 +8,28 @@ use std::collections::HashMap;
 // Stores the mapping from Tacky-level pseudo-registers to real registers or stack offsets.
 pub(super) struct RegisterAllocation<'ctx> {
     pseudo_reg_map: HashMap<Identifier, i64>, // maps each variable to a register or stack slot
-    asm_symbol_table: &'ctx AsmSymbolTable,   // used to resolve which variables are static
+    symbol_reg: &'ctx SymbolRegistery,        // used to resolve which variables are static
     sp_offset: i64,                           // current stack pointer offset (for spilled vars)
 }
 
 impl<'ctx> RegisterAllocation<'ctx> {
     /// Create a new RegisterAllocation instance
-    pub fn new(asm_symbol_table: &'ctx AsmSymbolTable) -> Self {
+    pub fn new(symbol_reg: &'ctx SymbolRegistery) -> Self {
         Self {
             pseudo_reg_map: HashMap::new(), // Maps pseudo-register IDs to stack offsets
-            asm_symbol_table,
+            symbol_reg,
             sp_offset: 0, // Tracks the current stack offset
         }
     }
 
     /// Round the stack pointer offset to the next multiple of 16.
     /// x86-64 ABI requires 16-byte alignment for stack before function calls.
-    fn get_sp_offset_rounded_to_16(&self) -> i64 {
+    fn get_sp_offset_rounded_to_16(&self) -> u64 {
         let n = -self.sp_offset; // positive size in bytes
         if n % 16 == 0 {
-            return n;
+            return n as u64;
         } else {
-            ((n + 15) / 16) * 16
+            (((n + 15) / 16) * 16) as u64
         }
     }
 
@@ -94,6 +93,10 @@ impl<'ctx> RegisterAllocation<'ctx> {
                 self.to_stack(src, *size);
             }
 
+            asm::Instruction::Div(size, src) => {
+                self.to_stack(src, *size);
+            }
+
             asm::Instruction::Cmp { size, src, dst } => {
                 self.to_stack(src, *size);
                 self.to_stack(dst, *size);
@@ -108,6 +111,11 @@ impl<'ctx> RegisterAllocation<'ctx> {
             }
 
             asm::Instruction::Movsx { src, dst } => {
+                self.to_stack(src, OperandSize::QuadWord);
+                self.to_stack(dst, OperandSize::QuadWord);
+            }
+
+            asm::Instruction::Movzx { src, dst } => {
                 self.to_stack(src, OperandSize::QuadWord);
                 self.to_stack(dst, OperandSize::QuadWord);
             }
@@ -127,11 +135,7 @@ impl<'ctx> RegisterAllocation<'ctx> {
             }
 
             // Determine if this is a static/global or needs a stack slot.
-            let needs_stack = match self.asm_symbol_table.get(*id) {
-                // if it's not a static variable, then return true
-                AsmSymbolEntry::Obj { size: _, is_static } => !(*is_static),
-                AsmSymbolEntry::Fun { .. } => false,
-            };
+            let needs_stack = !self.symbol_reg.get_variable(id).is_static();
 
             if needs_stack {
                 self.allocate_stack(*id, operand, size);

@@ -310,6 +310,8 @@ impl<'a> DebugTreePrinter<'a> {
     fn format_type(&self, tar_type: Type) -> &'static str {
         match tar_type {
             Type::Int => "int",
+            Type::Uint => "uint",
+            Type::Ulong => "ulong",
             Type::Long => "long",
         }
     }
@@ -320,8 +322,14 @@ impl<'a> DebugTreePrinter<'a> {
             Const::ConstInt(int) => {
                 println!("{}ConstInt {}", self.indent(level), int);
             }
+            Const::ConstUint(uint) => {
+                println!("{}ConstUint {}", self.indent(level), uint);
+            }
             Const::ConstLong(long) => {
                 println!("{}ConstLong {}", self.indent(level), long)
+            }
+            Const::ConstUlong(ulong) => {
+                println!("{}ConstUlong {}", self.indent(level), ulong)
             }
         }
     }

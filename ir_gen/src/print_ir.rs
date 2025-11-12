@@ -108,12 +108,22 @@ impl<'src, 'ctx> DebuggingPrinter<'src, 'ctx> {
 
             tacky::Instruction::SignExtend { src, dst } => self.print_sign_extend(src, dst, indent),
             tacky::Instruction::Truncate { src, dst } => self.print_truncate(src, dst, indent),
+            tacky::Instruction::ZeroExtend { src, dst } => self.print_zero_extend(src, dst, indent),
         }
     }
 
     fn print_sign_extend(&self, src: Value, dst: Value, indent: String) {
         println!(
             "{}SignExtend(src: {}, dst: {})",
+            indent,
+            self.format_value(src),
+            self.format_value(dst)
+        )
+    }
+
+    fn print_zero_extend(&self, src: Value, dst: Value, indent: String) {
+        println!(
+            "{}ZeroExtend(src: {}, dst: {})",
             indent,
             self.format_value(src),
             self.format_value(dst)

@@ -1,12 +1,9 @@
-use crate::{
-    TypeChecker,
-    semantic_error::{ErrorType, SemanticErr},
-};
+use crate::semantic_error::{ErrorType, SemanticErr};
 use parser::ast::*;
 use shared_context::{
     source_map::SourceMap,
     symbol_table::SymbolTable,
-    type_interner::{FuncTypeId, TypeInterner},
+    type_interner::{TypeID, TypeInterner},
 };
 
 mod typecheck_expressions;
@@ -14,11 +11,16 @@ mod typecheck_functions;
 mod typecheck_statements;
 mod typecheck_variables;
 
+/// Third pass: type checking
+/// Ensures static typing rules are respected and expressions are correctly typed
+pub(crate) struct TypeChecker<'src, 'ctx> {
+    ty_interner: &'ctx TypeInterner<'src>,
+    symbol_table: &'ctx mut SymbolTable,
+    source_map: &'ctx SourceMap<'src>,
+}
+
 impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     /// Constructs a new type checker.
-    ///
-    /// # Parameters
-    /// - `compiler_ctx`: Shared compiler context containing the source map, interner and symbol table.
     ///
     /// # Purpose
     /// The `TypeChecker` pass performs static type analysis over the entire
@@ -61,7 +63,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
 
     /// Recursively type checks all statements and declarations in a block.
     /// curr_fun store the ID the current enclosing function, this is used to typecheck return statements
-    fn typecheck_block(&mut self, block: Block, curr_fun: FuncTypeId) -> Result<Block, ErrorType> {
+    fn typecheck_block(&mut self, block: Block, curr_fun: TypeID) -> Result<Block, ErrorType> {
         let (block_items, span) = block.into_parts();
         let mut checked_block_items = Vec::new();
 
@@ -76,7 +78,7 @@ impl<'src, 'ctx> TypeChecker<'src, 'ctx> {
     fn typecheck_block_item(
         &mut self,
         item: BlockItem,
-        curr_fun: FuncTypeId,
+        curr_fun: TypeID,
     ) -> Result<BlockItem, ErrorType> {
         match item {
             BlockItem::D(decl) => Ok(BlockItem::D(self.typecheck_local_declaration(decl)?)),

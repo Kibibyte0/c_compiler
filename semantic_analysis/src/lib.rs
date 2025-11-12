@@ -1,8 +1,11 @@
+use identifier_resolution::IdentifierResolver;
+use loop_labeling::LoopLabeling;
 use parser::ast::Program;
 use shared_context::{
     source_map::SourceMap, symbol_interner::SymbolInterner, symbol_table::SymbolTable,
     type_interner::TypeInterner,
 };
+use type_checker::TypeChecker;
 
 use crate::semantic_error::SemanticErr;
 
@@ -11,29 +14,6 @@ mod identifier_resolution;
 mod loop_labeling;
 mod semantic_error;
 mod type_checker;
-
-/// First pass: resolves variable and function identifiers
-/// Builds the symbol table and detects duplicate declarations
-pub(crate) struct IdentifierResolver<'src, 'ctx> {
-    source_map: &'ctx SourceMap<'src>,
-    variable_counter: usize, // Counter for auto-generated variables
-}
-
-/// Second pass: labels each loop to support `break` and `continue`
-/// Ensures break/continue are used only inside loops
-pub(crate) struct LoopLabeling<'src, 'ctx> {
-    sy_interner: &'ctx mut SymbolInterner<'src>,
-    source_map: &'ctx SourceMap<'src>,
-    label_counter: usize, // Counter for unique loop labels
-}
-
-/// Third pass: type checking
-/// Ensures static typing rules are respected and expressions are correctly typed
-pub(crate) struct TypeChecker<'src, 'ctx> {
-    ty_interner: &'ctx TypeInterner<'src>,
-    symbol_table: &'ctx mut SymbolTable,
-    source_map: &'ctx SourceMap<'src>,
-}
 
 /// Run all semantic analysis passes on the AST.
 /// Returns the transformed AST and the final auto-variable counter.

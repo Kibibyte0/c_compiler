@@ -107,6 +107,9 @@ pub enum Instruction {
     /// used to cast an int to long
     SignExtend { src: Value, dst: Value },
 
+    /// used to cast an unsigned int to a bigger type
+    ZeroExtend { src: Value, dst: Value },
+
     /// used to cast a long to int
     Truncate { src: Value, dst: Value },
 

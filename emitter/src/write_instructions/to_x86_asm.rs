@@ -90,14 +90,18 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    pub(crate) fn convert_cond(cond: asm::Cond) -> String {
+    pub(crate) fn convert_cond(cond: asm::Cond) -> &'static str {
         match cond {
-            asm::Cond::E => "e".to_string(),
-            asm::Cond::G => "g".to_string(),
-            asm::Cond::L => "l".to_string(),
-            asm::Cond::NE => "ne".to_string(),
-            asm::Cond::GE => "ge".to_string(),
-            asm::Cond::LE => "le".to_string(),
+            asm::Cond::E => "e",
+            asm::Cond::G => "g",
+            asm::Cond::L => "l",
+            asm::Cond::NE => "ne",
+            asm::Cond::GE => "ge",
+            asm::Cond::LE => "le",
+            asm::Cond::A => "a",
+            asm::Cond::AE => "ae",
+            asm::Cond::B => "b",
+            asm::Cond::BE => "be",
         }
     }
 

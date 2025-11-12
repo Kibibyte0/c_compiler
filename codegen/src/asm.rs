@@ -81,6 +81,12 @@ pub enum Instruction {
         dst: Operand,
     },
 
+    // used to zero extend a longword to quadword
+    Movzx {
+        src: Operand,
+        dst: Operand,
+    },
+
     /// Unary operation (e.g., `neg`, `not`)
     Unary {
         op: UnaryOP,
@@ -105,6 +111,9 @@ pub enum Instruction {
 
     /// Signed integer division
     Idiv(OperandSize, Operand),
+
+    /// Unsigned integer division
+    Div(OperandSize, Operand),
 
     /// Sign-extend `EAX` into `EDX:EAX` before division (`cdq`)
     Cdq(OperandSize),
@@ -140,6 +149,10 @@ pub enum Cond {
     GE, // Greater or equal
     L,  // Less
     LE, // Less or equal
+    A,  // Greater for unisigned
+    AE, // Greater than or equal for unsigned
+    B,  // Less than for unsigned,
+    BE, // Less than or equal for unsigned
 }
 
 /// Represents the types of operands that can appear in an instruction.
@@ -148,7 +161,7 @@ pub enum Operand {
     Reg(Register),      // Physical CPU register
     Pseudo(Identifier), // Compiler-generated pseudo-register (before allocation)
     Stack(i64),         // Stack slot (offset from base pointer)
-    Immediate(i64),     // Immediate constant value
+    Immediate(u64),     // Immediate constant value
     Data(Identifier),   // For RIP relative addressing
 }
 

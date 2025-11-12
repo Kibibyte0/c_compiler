@@ -1,16 +1,18 @@
-use crate::AsmGen;
 use crate::{asm, asm::Operand, asm::Operand::Reg, asm::Register};
 use ir_gen::tacky;
-use shared_context::symbol_table::EntryType;
 use shared_context::type_interner::FunctionType;
-use shared_context::{Const, OperandSize, Type};
-use shared_context::{
-    Identifier, convert_type_to_operand_size, symbol_table::SymbolTable,
-    type_interner::TypeInterner,
-};
+use shared_context::{Const, OperandSize, SymbolRegistery, Type};
+use shared_context::{Identifier, convert_type_to_operand_size, type_interner::TypeInterner};
 
 mod gen_control_flow;
 mod gen_operations;
+
+// Responsible for generating assembly from Tacky IR.
+pub(crate) struct AsmGen<'ctx, 'src> {
+    ty_interner: &'ctx TypeInterner<'src>, // getting the type of each function
+    symbol_reg: &'ctx SymbolRegistery,
+    args_registers: Vec<asm::Register>, // predefined list of argument registers (ABI-dependent)
+}
 
 /// Implementation of the AsmGen struct, responsible for converting
 /// Tacky IR into an assembly-level intermediate representation (IR).
@@ -18,7 +20,7 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
     /// Creates a new AsmGen instance, initializing the standard set
     /// of registers used for function arguments according to the
     /// System V AMD64 calling convention.
-    pub fn new(ty_interner: &'ctx TypeInterner<'src>, symbol_table: &'ctx SymbolTable) -> Self {
+    pub fn new(ty_interner: &'ctx TypeInterner<'src>, symbol_reg: &'ctx SymbolRegistery) -> Self {
         let args_registers = vec![
             Register::DI,
             Register::SI,
@@ -29,52 +31,58 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
         ];
         Self {
             ty_interner,
-            symbol_table,
+            symbol_reg,
             args_registers,
         }
     }
 
     /// returns the type of the function
-    fn get_function_type<'a>(&self, iden: Identifier) -> Option<&FunctionType<'src>> {
-        let entry = self.symbol_table.get(iden)?;
-        if let EntryType::Func(type_id) = entry.entry_type {
-            Some(self.ty_interner.get(type_id))
-        } else {
-            None
-        }
+    fn get_function_type<'a>(&self, iden: Identifier) -> &FunctionType<'src> {
+        let fun_sy = self.symbol_reg.get_function(&iden);
+        self.ty_interner.get(fun_sy.get_type_id())
     }
 
     // returns the type of the variable
-    fn get_variable_type(&self, iden: Identifier) -> Option<Type> {
-        let entry = self.symbol_table.get(iden)?;
-        if let EntryType::Scalar(var_type) = entry.entry_type {
-            Some(var_type)
-        } else {
-            None
+    fn get_variable_type(&self, iden: Identifier) -> Type {
+        let var_sy = self.symbol_reg.get_variable(&iden);
+        var_sy.get_type()
+    }
+
+    fn get_val_type(&self, val: tacky::Value) -> Type {
+        match val {
+            tacky::Value::Constant(cons) => match cons {
+                Const::ConstInt(_) => Type::Int,
+                Const::ConstUint(_) => Type::Uint,
+                Const::ConstLong(_) => Type::Long,
+                Const::ConstUlong(_) => Type::Ulong,
+            },
+            tacky::Value::Var(iden) => self.get_variable_type(iden),
         }
     }
 
     fn get_val_size(&self, val: tacky::Value) -> OperandSize {
         match val {
             tacky::Value::Constant(cons) => match cons {
-                Const::ConstInt(_) => OperandSize::LongWord,
-                Const::ConstLong(_) => OperandSize::QuadWord,
+                Const::ConstInt(_) | Const::ConstUint(_) => OperandSize::LongWord,
+                Const::ConstLong(_) | Const::ConstUlong(_) => OperandSize::QuadWord,
             },
             tacky::Value::Var(iden) => {
-                // at this point, it's guaranteed that the variable is in the symbol table
-                let var_type = self.get_variable_type(iden).unwrap();
+                let var_type = self.get_variable_type(iden);
                 convert_type_to_operand_size(var_type)
             }
         }
     }
 
     /// Converts a Tacky value into an assembly operand.
+    // the type of the immediate dosen't matter, as it will have the same bit representation
     fn convert_val(val: tacky::Value) -> Operand {
         match val {
             tacky::Value::Var(identifier) => Operand::Pseudo(identifier),
             tacky::Value::Constant(cons) => match cons {
-                Const::ConstInt(int) => Operand::Immediate(int as i64),
-                Const::ConstLong(long) => Operand::Immediate(long),
+                Const::ConstInt(int) => Operand::Immediate(int as u64),
+                Const::ConstUint(uint) => Operand::Immediate(uint as u64),
+                Const::ConstUlong(ulong) => Operand::Immediate(ulong),
+                Const::ConstLong(long) => Operand::Immediate(long as u64),
             },
         }
     }
@@ -135,7 +143,7 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
         asm_instructions: &mut Vec<asm::Instruction>,
     ) {
         // it is quaranteed that the function is in the symbol table at this stage
-        let fun_type = self.get_function_type(iden).unwrap();
+        let fun_type = self.get_function_type(iden);
         for ((i, param), param_type) in params.iter().enumerate().zip(fun_type.params) {
             if i <= 5 {
                 asm_instructions.push(asm::Instruction::Mov {
@@ -201,8 +209,24 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
                 tacky::Instruction::Truncate { src, dst } => {
                     self.handle_truncate(src, dst, asm_instructions);
                 }
+                tacky::Instruction::ZeroExtend { src, dst } => {
+                    self.handle_zero_extention(src, dst, asm_instructions)
+                }
             }
         }
+    }
+
+    /// Handle Zero extension instruction
+    fn handle_zero_extention(
+        &self,
+        src: tacky::Value,
+        dst: tacky::Value,
+        asm_instructions: &mut Vec<asm::Instruction>,
+    ) {
+        asm_instructions.push(asm::Instruction::Movzx {
+            src: Self::convert_val(src),
+            dst: Self::convert_val(dst),
+        });
     }
 
     /// Hanlde truncate instruction with a mov instruction of operand size 32 bits
@@ -280,7 +304,7 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
             asm_instructions.push(asm::Instruction::Binary {
                 op: asm::BinaryOP::Sub,
                 size: OperandSize::QuadWord,
-                src: asm::Operand::Immediate(stack_padding as i64),
+                src: asm::Operand::Immediate(stack_padding as u64),
                 dst: Reg(Register::SP),
             });
         }
@@ -363,7 +387,7 @@ impl<'ctx, 'src> AsmGen<'ctx, 'src> {
             asm_instructions.push(asm::Instruction::Binary {
                 op: asm::BinaryOP::Add,
                 size: OperandSize::QuadWord,
-                src: asm::Operand::Immediate(bytes_to_remove as i64),
+                src: asm::Operand::Immediate(bytes_to_remove as u64),
                 dst: Reg(Register::SP),
             });
         }
